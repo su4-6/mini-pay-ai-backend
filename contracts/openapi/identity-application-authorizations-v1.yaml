@@ -1,0 +1,99 @@
+openapi: 3.1.0
+info:
+  title: MiniPay Application Authorization API
+  version: 1.0.0
+servers: [{url: http://localhost:8081}]
+security: [{minipayOAuth: [identity.profile.read]}]
+paths:
+  /api/v1/users/me/application-authorizations:
+    get:
+      operationId: listApplicationAuthorizations
+      responses:
+        '200': {description: Applications and current authorization states, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Authorization'}}}}}
+  /api/v1/users/me/application-authorizations/{applicationId}:
+    parameters: [{$ref: '#/components/parameters/ApplicationId'}]
+    get:
+      operationId: getApplicationAuthorization
+      responses: {'200': {description: Authorization details, content: {application/json: {schema: {$ref: '#/components/schemas/Authorization'}}}}}
+    post:
+      operationId: grantApplicationAuthorization
+      security: [{minipayOAuth: [identity.profile.write]}]
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/GrantRequest'}}}}
+      responses: {'201': {description: Granted, content: {application/json: {schema: {$ref: '#/components/schemas/Authorization'}}}}, '409': {$ref: '#/components/responses/Problem'}}
+    delete:
+      operationId: revokeApplicationAuthorization
+      security: [{minipayOAuth: [identity.profile.write]}]
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      responses: {'204': {description: Revoked}}
+  /api/v1/users/me/application-authorizations/{applicationId}/phone-challenges:
+    post:
+      operationId: createApplicationPhoneChallenge
+      security: [{minipayOAuth: [identity.profile.write]}]
+      parameters: [{$ref: '#/components/parameters/ApplicationId'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, required: [mobile], properties: {mobile: {type: string, pattern: '^1[3-9]\d{9}$', writeOnly: true}}}}}}
+      responses: {'202': {description: Application binding SMS challenge, content: {application/json: {schema: {$ref: '#/components/schemas/VerificationChallenge'}}}}}
+  /api/v1/users/me/application-authorizations/{applicationId}/scope-grants:
+    post:
+      operationId: addApplicationScopeGrants
+      security: [{minipayOAuth: [identity.profile.write]}]
+      parameters: [{$ref: '#/components/parameters/ApplicationId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/GrantRequest'}}}}
+      responses: {'201': {description: Scope grants updated, content: {application/json: {schema: {$ref: '#/components/schemas/Authorization'}}}}}
+  /api/v1/users/me/phone-disclosure-challenges:
+    post:
+      operationId: createPhoneDisclosureChallenge
+      security: [{minipayOAuth: [identity.profile.write]}]
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, required: [mobile], properties: {mobile: {type: string, pattern: '^1[3-9]\d{9}$', writeOnly: true}}}}}}
+      responses: {'202': {description: SMS challenge, content: {application/json: {schema: {$ref: '#/components/schemas/VerificationChallenge'}}}}}
+  /api/v1/users/me/phone-disclosure-verifications:
+    post:
+      operationId: verifyPhoneDisclosure
+      security: [{minipayOAuth: [identity.profile.write]}]
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, additionalProperties: false, required: [challengeId, code], properties: {challengeId: {type: string, format: uuid}, code: {type: string, writeOnly: true}}}}}}
+      responses: {'204': {description: Phone is now encrypted for authorized disclosure}}
+components:
+  securitySchemes:
+    minipayOAuth: {type: oauth2, flows: {authorizationCode: {authorizationUrl: http://localhost:8081/oauth2/authorize, tokenUrl: http://localhost:8081/oauth2/token, scopes: {identity.profile.read: Read profile, identity.profile.write: Manage profile authorization}}}}
+  parameters:
+    ApplicationId: {name: applicationId, in: path, required: true, schema: {type: string, maxLength: 64}}
+    IdempotencyKey: {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 16, maxLength: 128}}
+  schemas:
+    GrantRequest:
+      type: object
+      additionalProperties: false
+      required: [scopes, consentVersion]
+      properties:
+        scopes: {type: array, uniqueItems: true, items: {type: string}}
+        consentVersion: {type: integer, minimum: 1}
+        phoneChallengeId: {type: [string, 'null'], format: uuid}
+        verificationCode: {type: [string, 'null'], writeOnly: true}
+    Authorization:
+      type: object
+      required: [applicationId, displayName, developerName, consentVersion, state, grantedScopes, nickname]
+      properties:
+        authorizationId: {type: [string, 'null'], format: uuid}
+        applicationId: {type: string}
+        displayName: {type: string}
+        developerName: {type: string}
+        iconUrl: {type: [string, 'null'], format: uri}
+        privacyPolicyUrl: {type: string, format: uri}
+        termsUrl: {type: string, format: uri}
+        consentVersion: {type: integer}
+        state: {type: string, enum: [NOT_AUTHORIZED, PHONE_UPGRADE_REQUIRED, ACTIVE, REVOKING, REVOKED, SYNC_FAILED]}
+        grantedScopes: {type: array, uniqueItems: true, items: {type: string, enum: [profile.basic, profile.phone, location.current]}}
+        nickname: {type: string}
+        avatarUrl: {type: [string, 'null'], format: uri}
+        phoneMasked: {type: [string, 'null']}
+        authorizedAt: {type: [string, 'null'], format: date-time}
+        lastUsedAt: {type: [string, 'null'], format: date-time}
+        revokedAt: {type: [string, 'null'], format: date-time}
+    VerificationChallenge:
+      type: object
+      required: [challengeId, expiresAt]
+      properties: {challengeId: {type: string, format: uuid}, maskedMobile: {type: [string, 'null']}, expiresAt: {type: string, format: date-time}, resendAfterSeconds: {type: integer, minimum: 0}}
+    Problem: {$ref: './components/problem-details-v1.yaml#/components/schemas/ProblemDetails'}
+  responses:
+    Problem: {description: RFC 9457 problem, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}

@@ -1,0 +1,17 @@
+name: minipay-edge
+
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    network_mode: host
+    env_file:
+      - ${ENV_FILE:-.env.production}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  caddy-data:
+  caddy-config:

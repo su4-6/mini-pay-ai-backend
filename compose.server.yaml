@@ -1,0 +1,56 @@
+# Server-only overrides for the MiniPay sandbox.  Keep this file alongside
+# compose.yaml and start only the services listed in scripts/deploy-server.sh.
+#
+# No database, message queue, Seata, or application port is exposed publicly.
+# The host Nginx proxy is the only entry point and reaches management-bff on
+# loopback port 18088.
+services:
+  mysql:
+    ports: !reset []
+
+  redis:
+    ports: !reset []
+
+  rabbitmq:
+    ports: !reset []
+
+  seata-server:
+    ports: !reset []
+
+  identity-service:
+    ports: !reset []
+    environment:
+      MERCHANT_BFF_OAUTH_REDIRECT_URI: https://pay.su46proj.site/merchant/oauth2/code
+      ADMIN_OAUTH_REDIRECT_URI: ${ADMIN_OAUTH_REDIRECT_URI}
+      ADMIN_WEB_PUBLIC_URL: ${ADMIN_WEB_PUBLIC_URL}
+
+  payment-service:
+    ports: !reset []
+
+  wallet-service:
+    ports: !reset []
+
+  agent-service:
+    ports: !reset []
+
+  consumer-bff:
+    ports: !reset []
+
+  management-bff:
+    ports: !reset
+      - "127.0.0.1:18088:8080"
+    environment:
+      MERCHANT_WEB_PUBLIC_URL: https://pay.su46proj.site/merchant/
+      OPS_WEB_PUBLIC_URL: https://pay.su46proj.site/ops/
+      MERCHANT_BFF_OAUTH_REDIRECT_URI: https://pay.su46proj.site/merchant/oauth2/code
+      MANAGEMENT_OAUTH_REDIRECT_URI: https://pay.su46proj.site/login/oauth2/code/minipay-ops
+      COMMERCE_INTERNAL_URL: http://commerce-service:8085
+
+  admin-bff:
+    ports: !reset
+      - "127.0.0.1:18089:8080"
+    environment:
+      ADMIN_WEB_PUBLIC_URL: ${ADMIN_WEB_PUBLIC_URL}
+      ADMIN_OAUTH_REDIRECT_URI: ${ADMIN_OAUTH_REDIRECT_URI}
+      COMMERCE_INTERNAL_URL: http://commerce-service:8085
+      SESSION_COOKIE_SECURE: "true"

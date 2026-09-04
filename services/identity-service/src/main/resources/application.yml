@@ -1,0 +1,222 @@
+server:
+  port: ${SERVER_PORT:8081}
+  shutdown: graceful
+  servlet:
+    session:
+      cookie:
+        name: ${IDENTITY_SESSION_COOKIE_NAME:__Host-minipay-identity}
+        http-only: true
+        secure: ${SESSION_COOKIE_SECURE:true}
+        same-site: lax
+        path: /
+
+spring:
+  application:
+    name: identity-service
+  profiles:
+    default: demo-auth
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${MYSQL_URL:jdbc:mysql://localhost:3306/minipay_identity?preserveInstants=true&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true}
+    username: ${MYSQL_USERNAME:minipay}
+    password: ${MYSQL_PASSWORD:minipay}
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+  flyway:
+    enabled: true
+    validate-on-migrate: false
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  session:
+    timeout: ${IDENTITY_SESSION_TIMEOUT:30m}
+    redis:
+      namespace: minipay:session:identity
+      flush-mode: on_save
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:minipay}
+    password: ${RABBITMQ_PASSWORD:minipay}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+  # 邮箱验证码：EMAIL_PROVIDER=smtp 且 EMAIL_SMTP_HOST 非空时生效（QQ 邮箱：smtp.qq.com:465/SSL）。
+  # host 为空时 Spring Boot 不装配 JavaMailSender，EMAIL_PROVIDER=disabled 即完全关闭邮件功能。
+  mail:
+    host: ${EMAIL_SMTP_HOST:}
+    port: ${EMAIL_SMTP_PORT:465}
+    username: ${EMAIL_SMTP_USERNAME:}
+    password: ${EMAIL_SMTP_PASSWORD:}
+    protocol: smtp
+    properties:
+      mail:
+        smtp:
+          auth: ${EMAIL_SMTP_AUTH:true}
+          ssl:
+            enable: ${EMAIL_SMTP_SSL:true}
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+minipay:
+  identity:
+    issuer: ${IDENTITY_ISSUER:http://localhost:8081}
+    signing-private-key-location: ${JWT_SIGNING_PRIVATE_KEY_LOCATION:}
+    signing-public-key-location: ${JWT_SIGNING_PUBLIC_KEY_LOCATION:}
+    phone-hash-pepper: ${PHONE_HASH_PEPPER:minipay-demo-phone-pepper-change-me}
+    phone-disclosure:
+      encryption-key: ${PHONE_DISCLOSURE_ENCRYPTION_KEY:minipay-demo-phone-disclosure-key-change-me}
+      key-id: ${PHONE_DISCLOSURE_KEY_ID:v1}
+    email-hash-pepper: ${EMAIL_HASH_PEPPER:minipay-demo-email-pepper-change-me}
+    token-digest-pepper: ${TOKEN_DIGEST_PEPPER:minipay-demo-token-pepper-change-me}
+    payment-authorization-token-key: ${PAYMENT_AUTHORIZATION_TOKEN_KEY:${TOKEN_DIGEST_PEPPER:minipay-demo-token-pepper-change-me}}
+    payment-password-change-verification-ttl: ${PAYMENT_PASSWORD_CHANGE_VERIFICATION_TTL:5m}
+    real-name:
+      provider: ${REAL_NAME_PROVIDER:disabled}
+      hmac-key: ${REAL_NAME_HMAC_KEY:minipay-demo-real-name-hmac-key}
+      endpoint: ${ALIYUN_REAL_NAME_ENDPOINT:facebody.cn-shanghai.aliyuncs.com}
+      region: ${ALIYUN_REAL_NAME_REGION:cn-shanghai}
+      ram-role-name: ${ALIYUN_REAL_NAME_RAM_ROLE_NAME:${ALIYUN_RAM_ROLE_NAME:}}
+      access-key-id: ${ALIYUN_REAL_NAME_ACCESS_KEY_ID:${ALIBABA_CLOUD_ACCESS_KEY_ID:${ALIYUN_ACCESS_KEY_ID:}}}
+      access-key-secret: ${ALIYUN_REAL_NAME_ACCESS_KEY_SECRET:${ALIBABA_CLOUD_ACCESS_KEY_SECRET:${ALIYUN_ACCESS_KEY_SECRET:}}}
+      security-token: ${ALIYUN_REAL_NAME_SECURITY_TOKEN:${ALIBABA_CLOUD_SECURITY_TOKEN:}}
+    audit-hash-pepper: ${AUTH_AUDIT_PEPPER:minipay-demo-audit-pepper-change-me}
+    captcha-pepper: ${CAPTCHA_PEPPER:minipay-demo-captcha-pepper-change-me}
+    management-client:
+      client-id: ${MANAGEMENT_OAUTH_CLIENT_ID:minipay-management-bff}
+      client-secret: ${MANAGEMENT_OAUTH_CLIENT_SECRET:minipay-management-demo-secret}
+      redirect-uri: ${MANAGEMENT_OAUTH_REDIRECT_URI:http://localhost:8088/login/oauth2/code/minipay-ops}
+      post-logout-redirect-uri: ${OPS_WEB_PUBLIC_URL:http://localhost:8000/}
+    admin-client:
+      client-id: ${ADMIN_OAUTH_CLIENT_ID:minipay-admin-bff}
+      client-secret: ${ADMIN_OAUTH_CLIENT_SECRET:minipay-admin-demo-secret}
+      redirect-uri: ${ADMIN_OAUTH_REDIRECT_URI:http://localhost:8089/login/oauth2/code/minipay-admin}
+      post-logout-redirect-uri: ${ADMIN_WEB_PUBLIC_URL:http://localhost:8002/}
+    merchant-client:
+      post-logout-redirect-uri: ${MERCHANT_WEB_PUBLIC_URL:http://localhost:8001/login}
+    bootstrap-admin:
+      mobile: ${BOOTSTRAP_SYSTEM_ADMIN_MOBILE:}
+      display-name: ${BOOTSTRAP_SYSTEM_ADMIN_DISPLAY_NAME:System Administrator}
+    demo-platform-admin:
+      mobile: ${DEMO_PLATFORM_ADMIN_MOBILE:13800138000}
+    android-client:
+      client-id: ${ANDROID_OAUTH_CLIENT_ID:minipay-android}
+      redirect-uri: ${ANDROID_OAUTH_REDIRECT_URI:com.minipay.mobile:/oauth2redirect}
+      authorization-code-ttl: 60s
+    merchant-bff-client:
+      client-id: ${MERCHANT_BFF_OAUTH_CLIENT_ID:minipay-merchant-bff}
+      redirect-uri: ${MERCHANT_BFF_OAUTH_REDIRECT_URI:http://localhost:8088/merchant/oauth2/code}
+    internal-clients:
+      payment-to-identity:
+        client-id: ${PAYMENT_TO_IDENTITY_CLIENT_ID:minipay-payment-to-identity}
+        client-secret: ${PAYMENT_TO_IDENTITY_CLIENT_SECRET:minipay-payment-identity-demo-secret}
+      payment-to-wallet:
+        client-id: ${PAYMENT_TO_WALLET_CLIENT_ID:minipay-payment-to-wallet}
+        client-secret: ${PAYMENT_TO_WALLET_CLIENT_SECRET:minipay-payment-wallet-demo-secret}
+      wallet-to-identity:
+        client-id: ${WALLET_TO_IDENTITY_CLIENT_ID:minipay-wallet-to-identity}
+        client-secret: ${WALLET_TO_IDENTITY_CLIENT_SECRET:minipay-wallet-identity-demo-secret}
+      agent-to-payment:
+        client-id: ${AGENT_TO_PAYMENT_CLIENT_ID:minipay-agent-to-payment}
+        client-secret: ${AGENT_TO_PAYMENT_CLIENT_SECRET:minipay-agent-payment-demo-secret}
+      agent-to-identity:
+        client-id: ${AGENT_TO_IDENTITY_CLIENT_ID:minipay-agent-to-identity}
+        client-secret: ${AGENT_TO_IDENTITY_CLIENT_SECRET:minipay-agent-identity-demo-secret}
+      agent-delegation:
+        client-id: ${AGENT_DELEGATION_CLIENT_ID:minipay-agent-service}
+        client-secret: ${AGENT_DELEGATION_CLIENT_SECRET:minipay-agent-delegation-demo-secret}
+      identity-to-payment:
+        client-id: ${IDENTITY_TO_PAYMENT_CLIENT_ID:minipay-identity-to-payment}
+        client-secret: ${IDENTITY_TO_PAYMENT_CLIENT_SECRET:minipay-identity-payment-demo-secret}
+      commerce-to-identity:
+        client-id: ${COMMERCE_TO_IDENTITY_CLIENT_ID:minipay-commerce-to-identity}
+        client-secret: ${COMMERCE_TO_IDENTITY_CLIENT_SECRET:minipay-commerce-identity-demo-secret}
+    sms:
+      provider: ${SMS_PROVIDER:disabled}
+      code-ttl: 5m
+      resend-after: 60s
+      consumer-lock-duration: 10m
+      demo-code: ${DEMO_SMS_CODE:123456}
+      webhook-url: ${SMS_WEBHOOK_URL:http://localhost:8099/v1/messages}
+      webhook-token: ${SMS_WEBHOOK_TOKEN:disabled}
+      aliyun:
+        endpoint: ${ALIYUN_SMS_ENDPOINT:dysmsapi.aliyuncs.com}
+        region: ${ALIYUN_SMS_REGION:cn-hangzhou}
+        sign-name: ${ALIYUN_SMS_SIGN_NAME:}
+        login-template-code: ${ALIYUN_SMS_LOGIN_TEMPLATE_CODE:}
+        connect-timeout-ms: ${ALIYUN_SMS_CONNECT_TIMEOUT_MS:3000}
+        read-timeout-ms: ${ALIYUN_SMS_READ_TIMEOUT_MS:5000}
+        ram-role-name: ${ALIYUN_SMS_RAM_ROLE_NAME:${ALIYUN_RAM_ROLE_NAME:}}
+        access-key-id: ${ALIYUN_SMS_ACCESS_KEY_ID:${ALIBABA_CLOUD_ACCESS_KEY_ID:${ALIYUN_ACCESS_KEY_ID:}}}
+        access-key-secret: ${ALIYUN_SMS_ACCESS_KEY_SECRET:${ALIBABA_CLOUD_ACCESS_KEY_SECRET:${ALIYUN_ACCESS_KEY_SECRET:}}}
+      security-token: ${ALIYUN_SMS_SECURITY_TOKEN:${ALIBABA_CLOUD_SECURITY_TOKEN:}}
+      dypns:
+        endpoint: ${ALIYUN_DYPNS_ENDPOINT:dypnsapi.aliyuncs.com}
+        sign-name: ${ALIYUN_DYPNS_SIGN_NAME:}
+        template-code: ${ALIYUN_DYPNS_TEMPLATE_CODE:}
+        template-param: ${ALIYUN_DYPNS_TEMPLATE_PARAM:}
+        valid-time-seconds: ${ALIYUN_DYPNS_VALID_TIME_SECONDS:300}
+        send-interval-seconds: ${ALIYUN_DYPNS_SEND_INTERVAL_SECONDS:60}
+        connect-timeout-ms: ${ALIYUN_DYPNS_CONNECT_TIMEOUT_MS:3000}
+        read-timeout-ms: ${ALIYUN_DYPNS_READ_TIMEOUT_MS:5000}
+        access-key-id: ${ALIYUN_DYPNS_ACCESS_KEY_ID:${ALIBABA_CLOUD_ACCESS_KEY_ID:${ALIYUN_ACCESS_KEY_ID:}}}
+        access-key-secret: ${ALIYUN_DYPNS_ACCESS_KEY_SECRET:${ALIBABA_CLOUD_ACCESS_KEY_SECRET:${ALIYUN_ACCESS_KEY_SECRET:}}}
+    email:
+      provider: ${EMAIL_PROVIDER:disabled}
+      from: ${EMAIL_FROM:}
+      code-ttl: ${EMAIL_CODE_TTL:5m}
+    rate-limit:
+      captcha-per-five-minutes: ${CAPTCHA_RATE_LIMIT:30}
+      login-per-five-minutes: ${LOGIN_RATE_LIMIT:20}
+      recipient-lookup-per-user: ${RECIPIENT_LOOKUP_RATE_LIMIT_PER_USER:20}
+      recipient-lookup-per-ip: ${RECIPIENT_LOOKUP_RATE_LIMIT_PER_IP:100}
+    profile:
+      upload-ttl: ${AVATAR_UPLOAD_TTL:10m}
+      read-url-ttl: ${AVATAR_READ_URL_TTL:30m}
+      max-avatar-bytes: ${AVATAR_MAX_BYTES:5242880}
+    object-storage:
+      provider: ${OBJECT_STORAGE_PROVIDER:disabled}
+      endpoint: ${ALIYUN_OSS_ENDPOINT:}
+      region: ${ALIYUN_OSS_REGION:}
+      bucket: ${ALIYUN_OSS_BUCKET:}
+      ram-role-name: ${ALIYUN_OSS_RAM_ROLE_NAME:${ALIYUN_RAM_ROLE_NAME:}}
+      access-key-id: ${ALIYUN_OSS_ACCESS_KEY_ID:${ALIBABA_CLOUD_ACCESS_KEY_ID:${ALIYUN_ACCESS_KEY_ID:}}}
+      access-key-secret: ${ALIYUN_OSS_ACCESS_KEY_SECRET:${ALIBABA_CLOUD_ACCESS_KEY_SECRET:${ALIYUN_ACCESS_KEY_SECRET:}}}
+      security-token: ${ALIYUN_OSS_SECURITY_TOKEN:${ALIBABA_CLOUD_SECURITY_TOKEN:}}
+    content-safety:
+      provider: ${CONTENT_SAFETY_PROVIDER:disabled}
+      endpoint: ${ALIYUN_GREEN_ENDPOINT:green-cip.cn-shanghai.aliyuncs.com}
+      region: ${ALIYUN_GREEN_REGION:cn-shanghai}
+      ram-role-name: ${ALIYUN_GREEN_RAM_ROLE_NAME:${ALIYUN_RAM_ROLE_NAME:}}
+      access-key-id: ${ALIYUN_GREEN_ACCESS_KEY_ID:${ALIBABA_CLOUD_ACCESS_KEY_ID:${ALIYUN_ACCESS_KEY_ID:}}}
+      access-key-secret: ${ALIYUN_GREEN_ACCESS_KEY_SECRET:${ALIBABA_CLOUD_ACCESS_KEY_SECRET:${ALIYUN_ACCESS_KEY_SECRET:}}}
+      security-token: ${ALIYUN_GREEN_SECURITY_TOKEN:${ALIBABA_CLOUD_SECURITY_TOKEN:}}
+      text-service: ${ALIYUN_GREEN_TEXT_SERVICE:nickname_detection}
+      image-service: ${ALIYUN_GREEN_IMAGE_SERVICE:baselineCheck}
+
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+    default-fetch-size: 100
+    default-statement-timeout: 5
+
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  observations:
+    key-values:
+      service: ${spring.application.name}

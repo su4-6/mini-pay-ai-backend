@@ -1,0 +1,382 @@
+asyncapi: 3.0.0
+info:
+  title: MiniPay P0 Domain Events
+  version: 1.5.0
+defaultContentType: application/json
+channels:
+  identity.application-authorization.granted:
+    address: identity.application-authorization.granted
+    x-producer: identity-service
+    x-consumers: [commerce-service]
+    x-deduplication-key: eventId
+    messages: {ApplicationAuthorizationChanged: {$ref: '#/components/messages/ApplicationAuthorizationChanged'}}
+  identity.application-authorization.revoked:
+    address: identity.application-authorization.revoked
+    x-producer: identity-service
+    x-consumers: [commerce-service]
+    x-deduplication-key: eventId
+    messages: {ApplicationAuthorizationChanged: {$ref: '#/components/messages/ApplicationAuthorizationChanged'}}
+  identity.user-disclosure-profile.changed:
+    address: identity.user-disclosure-profile.changed
+    x-producer: identity-service
+    x-consumers: [commerce-service]
+    x-deduplication-key: eventId
+    messages: {DisclosureProfileChanged: {$ref: '#/components/messages/DisclosureProfileChanged'}}
+  identity.user.opened:
+    address: identity.user.opened
+    x-producer: identity-service
+    x-consumers: [wallet-service]
+    x-deduplication-key: eventId
+    messages: {UserOpened: {$ref: '#/components/messages/UserOpened'}}
+  payment.recharge.succeeded:
+    address: payment.recharge.succeeded
+    x-producer: payment-service
+    x-consumers: [wallet-service]
+    x-deduplication-key: eventId
+    messages: {RechargeSucceeded: {$ref: '#/components/messages/RechargeSucceeded'}}
+  payment.withdrawal.succeeded:
+    address: payment.withdrawal.succeeded
+    x-producer: payment-service
+    x-consumers: [ops-projection]
+    x-deduplication-key: eventId
+    messages: {WithdrawalSucceeded: {$ref: '#/components/messages/WithdrawalSucceeded'}}
+  payment.order.succeeded:
+    address: payment.order.succeeded
+    x-producer: payment-service
+    x-consumers: [ops-projection, merchant-projection]
+    x-deduplication-key: eventId
+    messages: {PaymentSucceeded: {$ref: '#/components/messages/PaymentSucceeded'}}
+  payment.transfer.processing:
+    address: payment.transfer.processing
+    x-producer: payment-service
+    x-consumers: [wallet-bill-projection, ops-projection]
+    x-deduplication-key: eventId
+    x-state-rule: PROCESSING may only advance to SUCCEEDED or FAILED
+    messages: {TransferProcessing: {$ref: '#/components/messages/TransferStatus'}}
+  payment.transfer.succeeded:
+    address: payment.transfer.succeeded
+    x-producer: payment-service
+    x-consumers: [wallet-bill-projection, ops-projection]
+    x-deduplication-key: eventId
+    x-state-rule: terminal
+    messages: {TransferSucceeded: {$ref: '#/components/messages/TransferStatus'}}
+  payment.transfer.failed:
+    address: payment.transfer.failed
+    x-producer: payment-service
+    x-consumers: [wallet-bill-projection, ops-projection]
+    x-deduplication-key: eventId
+    x-state-rule: terminal
+    messages: {TransferFailed: {$ref: '#/components/messages/TransferStatus'}}
+  payment.refund.succeeded:
+    address: payment.refund.succeeded
+    x-producer: payment-service
+    x-consumers: [wallet-service, commerce-service, ops-projection, merchant-projection]
+    x-deduplication-key: eventId
+    messages: {RefundSucceeded: {$ref: '#/components/messages/RefundSucceeded'}}
+  payment.food-order.succeeded:
+    address: payment.food-order.succeeded
+    x-producer: payment-service
+    x-consumers: [commerce-service]
+    x-deduplication-key: eventId
+    messages: {FoodPaymentSucceeded: {$ref: '#/components/messages/FoodPaymentSucceeded'}}
+  payment.food-order.failed:
+    address: payment.food-order.failed
+    x-producer: payment-service
+    x-consumers: [commerce-service]
+    x-deduplication-key: eventId
+    messages: {FoodPaymentFailed: {$ref: '#/components/messages/FoodPaymentFailed'}}
+  payment.food-order.closed:
+    address: payment.food-order.closed
+    x-producer: payment-service
+    x-consumers: [commerce-service]
+    x-deduplication-key: eventId
+    messages: {FoodPaymentFailed: {$ref: '#/components/messages/FoodPaymentFailed'}}
+  payment.refund.processing:
+    address: payment.refund.processing
+    x-producer: payment-service
+    x-consumers: [commerce-service]
+    x-deduplication-key: eventId
+    messages: {FoodRefundStatus: {$ref: '#/components/messages/FoodRefundStatus'}}
+  payment.refund.failed:
+    address: payment.refund.failed
+    x-producer: payment-service
+    x-consumers: [commerce-service]
+    x-deduplication-key: eventId
+    messages: {FoodRefundStatus: {$ref: '#/components/messages/FoodRefundStatus'}}
+  commerce.food-order.created:
+    address: commerce.food-order.created
+    x-producer: commerce-service
+    x-consumers: [payment-service, agent-service]
+    x-deduplication-key: eventId
+    messages: {FoodOrderStatus: {$ref: '#/components/messages/FoodOrderStatus'}}
+  commerce.food-order.paid:
+    address: commerce.food-order.paid
+    x-producer: commerce-service
+    x-consumers: [agent-service]
+    x-deduplication-key: eventId
+    messages: {FoodOrderStatus: {$ref: '#/components/messages/FoodOrderStatus'}}
+  commerce.food-order.payment-failed:
+    address: commerce.food-order.payment-failed
+    x-producer: commerce-service
+    x-consumers: [agent-service]
+    x-deduplication-key: eventId
+    messages: {FoodOrderStatus: {$ref: '#/components/messages/FoodOrderStatus'}}
+  commerce.food-order.status-changed:
+    address: commerce.food-order.status-changed
+    x-producer: commerce-service
+    x-consumers: [agent-service]
+    x-deduplication-key: eventId
+    messages: {FoodOrderStatus: {$ref: '#/components/messages/FoodOrderStatus'}}
+  commerce.food-order.cancelled:
+    address: commerce.food-order.cancelled
+    x-producer: commerce-service
+    x-consumers: [agent-service]
+    x-deduplication-key: eventId
+    messages: {FoodOrderStatus: {$ref: '#/components/messages/FoodOrderStatus'}}
+  commerce.food-order.refund-processing:
+    address: commerce.food-order.refund-processing
+    x-producer: commerce-service
+    x-consumers: [agent-service]
+    x-deduplication-key: eventId
+    messages: {FoodOrderStatus: {$ref: '#/components/messages/FoodOrderStatus'}}
+  commerce.food-order.refund-failed:
+    address: commerce.food-order.refund-failed
+    x-producer: commerce-service
+    x-consumers: [agent-service]
+    x-deduplication-key: eventId
+    messages: {FoodOrderStatus: {$ref: '#/components/messages/FoodOrderStatus'}}
+  commerce.refund.requested:
+    address: commerce.refund.requested
+    x-producer: commerce-service
+    x-consumers: [payment-service]
+    x-deduplication-key: eventId
+    messages: {FoodRefundRequested: {$ref: '#/components/messages/FoodRefundRequested'}}
+components:
+  messages:
+    ApplicationAuthorizationChanged:
+      payload:
+        allOf:
+          - {$ref: '#/components/schemas/EventEnvelope'}
+          - type: object
+            properties:
+              payload:
+                type: object
+                required: [userId, applicationId, scopes]
+                properties: {userId: {type: string, format: uuid}, applicationId: {const: yshop-food}, scopes: {type: array, items: {type: string}}}
+    DisclosureProfileChanged:
+      payload:
+        allOf:
+          - {$ref: '#/components/schemas/EventEnvelope'}
+          - type: object
+            properties:
+              payload:
+                type: object
+                required: [userId]
+                properties: {userId: {type: string, format: uuid}}
+    UserOpened:
+      payload:
+        allOf:
+          - {$ref: '#/components/schemas/EventEnvelope'}
+          - type: object
+            properties: {payload: {$ref: '#/components/schemas/UserOpenedPayload'}}
+    RechargeSucceeded:
+      payload:
+        allOf:
+          - {$ref: '#/components/schemas/EventEnvelope'}
+          - type: object
+            properties: {payload: {$ref: '#/components/schemas/RechargeSucceededPayload'}}
+    WithdrawalSucceeded:
+      payload:
+        allOf:
+          - {$ref: '#/components/schemas/EventEnvelope'}
+          - type: object
+            properties: {payload: {$ref: '#/components/schemas/WithdrawalSucceededPayload'}}
+    PaymentSucceeded:
+      payload:
+        allOf:
+          - {$ref: '#/components/schemas/EventEnvelope'}
+          - type: object
+            properties: {payload: {$ref: '#/components/schemas/PaymentSucceededPayload'}}
+    TransferStatus:
+      payload:
+        allOf:
+          - {$ref: '#/components/schemas/EventEnvelope'}
+          - type: object
+            properties: {payload: {$ref: '#/components/schemas/TransferStatusPayload'}}
+    RefundSucceeded:
+      payload:
+        allOf:
+          - {$ref: '#/components/schemas/EventEnvelope'}
+          - type: object
+            properties: {payload: {$ref: '#/components/schemas/RefundSucceededPayload'}}
+    FoodPaymentSucceeded:
+      payload:
+        allOf:
+          - {$ref: '#/components/schemas/EventEnvelope'}
+          - type: object
+            properties: {payload: {$ref: '#/components/schemas/FoodPaymentSucceededPayload'}}
+    FoodPaymentFailed:
+      payload:
+        allOf:
+          - {$ref: '#/components/schemas/EventEnvelope'}
+          - type: object
+            properties: {payload: {$ref: '#/components/schemas/FoodPaymentFailedPayload'}}
+    FoodRefundStatus:
+      payload:
+        allOf:
+          - {$ref: '#/components/schemas/EventEnvelope'}
+          - type: object
+            properties: {payload: {$ref: '#/components/schemas/FoodRefundStatusPayload'}}
+    FoodOrderStatus:
+      payload:
+        allOf:
+          - {$ref: '#/components/schemas/EventEnvelope'}
+          - type: object
+            properties: {payload: {$ref: '#/components/schemas/FoodOrderStatusPayload'}}
+    FoodRefundRequested:
+      payload:
+        allOf:
+          - {$ref: '#/components/schemas/EventEnvelope'}
+          - type: object
+            properties: {payload: {$ref: '#/components/schemas/FoodRefundRequestedPayload'}}
+  schemas:
+    EventEnvelope:
+      type: object
+      additionalProperties: false
+      required: [eventId, eventType, aggregateType, aggregateId, occurredAt, traceId, payloadVersion, payload]
+      properties:
+        eventId: {type: string, format: uuid}
+        eventType: {type: string}
+        aggregateType: {type: string}
+        aggregateId: {type: string, format: uuid}
+        occurredAt: {type: string, format: date-time}
+        traceId: {type: string}
+        payloadVersion: {type: integer, const: 1}
+        payload: {type: object}
+    UserOpenedPayload:
+      type: object
+      additionalProperties: false
+      required: [userId]
+      properties: {userId: {type: string, format: uuid}}
+    RechargeSucceededPayload:
+      type: object
+      additionalProperties: false
+      required: [rechargeId, rechargeNo, userId, bankCardId, amountCent, currency, channel]
+      properties:
+        rechargeId: {type: string, format: uuid}
+        rechargeNo: {type: string}
+        userId: {type: string, format: uuid}
+        bankCardId: {type: string, format: uuid}
+        amountCent: {type: integer, minimum: 1, maximum: 1000000}
+        currency: {type: string, const: CNY}
+        channel: {type: string, const: BANK_CARD}
+    WithdrawalSucceededPayload:
+      type: object
+      additionalProperties: false
+      required: [withdrawalId, withdrawalNo, userId, bankCardId, amountCent, currency]
+      properties:
+        withdrawalId: {type: string, format: uuid}
+        withdrawalNo: {type: string}
+        userId: {type: string, format: uuid}
+        bankCardId: {type: string, format: uuid}
+        amountCent: {type: integer, minimum: 1, maximum: 1000000}
+        currency: {type: string, const: CNY}
+    PaymentSucceededPayload:
+      type: object
+      additionalProperties: false
+      required: [paymentOrderId, paymentOrderNo, userId, amountCent, currency, paymentMethod]
+      properties:
+        paymentOrderId: {type: string, format: uuid}
+        paymentOrderNo: {type: string}
+        userId: {type: string, format: uuid}
+        amountCent: {type: integer, minimum: 1, maximum: 1000000}
+        currency: {type: string, const: CNY}
+        paymentMethod: {type: string, enum: [ALIPAY, WECHAT_PAY, WALLET_BALANCE]}
+        merchantId: {type: string, format: uuid, description: 商户订单时存在}
+        applicationId: {type: string, format: uuid, description: 商户订单时存在}
+        appId: {type: string, description: 商户应用标识}
+        merchantOrderNo: {type: string, description: 平台生成的商户订单号}
+    TransferStatusPayload:
+      type: object
+      additionalProperties: false
+      required: [transferId, transferNo, payerUserId, receiverUserId, amountCent, status]
+      properties:
+        transferId: {type: string, format: uuid}
+        transferNo: {type: string}
+        payerUserId: {type: string, format: uuid}
+        receiverUserId: {type: string, format: uuid}
+        amountCent: {type: integer, minimum: 1}
+        remark: {type: string, maxLength: 50}
+        status: {type: string, enum: [PROCESSING, SUCCEEDED, FAILED]}
+        failureCode: {type: string}
+    RefundSucceededPayload:
+      type: object
+      additionalProperties: false
+      required: [refundId, refundNo, paymentOrderId, userId, amountCent]
+      properties:
+        refundId: {type: string, format: uuid}
+        refundNo: {type: string}
+        paymentOrderId: {type: string, format: uuid}
+        userId: {type: string, format: uuid}
+        amountCent: {type: integer, minimum: 1}
+        merchantId: {type: string, format: uuid, description: 商户退款时存在}
+        applicationId: {type: string, format: uuid, description: 商户退款时存在}
+        appId: {type: string, description: 商户应用标识}
+        merchantOrderNo: {type: string, description: 原商户订单号}
+        paymentOrderNo: {type: string}
+        paymentMethod: {type: string, enum: [ALIPAY, WECHAT_PAY, WALLET_BALANCE]}
+        foodOrderId: {type: string, format: uuid, description: 外卖退款事件存在}
+    FoodPaymentSucceededPayload:
+      type: object
+      additionalProperties: false
+      required: [foodOrderId, paymentOrderId, amountCent, currency]
+      properties:
+        foodOrderId: {type: string, format: uuid}
+        paymentOrderId: {type: string, format: uuid}
+        amountCent: {type: integer, minimum: 1}
+        currency: {type: string, const: CNY}
+    FoodPaymentFailedPayload:
+      type: object
+      additionalProperties: false
+      required: [foodOrderId, paymentOrderId, failureCode]
+      properties:
+        foodOrderId: {type: string, format: uuid}
+        paymentOrderId: {type: string, format: uuid}
+        failureCode: {type: string, maxLength: 64}
+    FoodRefundStatusPayload:
+      type: object
+      additionalProperties: false
+      required: [foodOrderId, refundId, paymentOrderId, amountCent]
+      properties:
+        foodOrderId: {type: string, format: uuid}
+        refundId: {type: string, format: uuid}
+        paymentOrderId: {type: string, format: uuid}
+        amountCent: {type: integer, minimum: 1}
+        failureCode: {type: string, maxLength: 64}
+    FoodOrderStatusPayload:
+      type: object
+      additionalProperties: false
+      required: [orderId, orderNo, userId, status, paymentStatus, refundStatus, amountCent, currency]
+      properties:
+        orderId: {type: string, format: uuid}
+        orderNo: {type: string}
+        userId: {type: string, format: uuid}
+        status: {type: string, enum: [PENDING_PAYMENT, PAID, CANCELLATION_PENDING, REFUND_FAILED, MERCHANT_ACCEPTED, PREPARING, DELIVERING, DELIVERED, CANCELLED]}
+        paymentStatus: {type: string, enum: [UNPAID, SUCCEEDED, FAILED]}
+        refundStatus: {type: string, enum: [NONE, REQUESTED, PROCESSING, SUCCEEDED, FAILED]}
+        amountCent: {type: integer, minimum: 1}
+        currency: {type: string, const: CNY}
+    FoodRefundRequestedPayload:
+      type: object
+      additionalProperties: false
+      required: [orderId, orderNo, userId, status, paymentStatus, refundStatus, amountCent, currency, paymentOrderId]
+      properties:
+        orderId: {type: string, format: uuid}
+        orderNo: {type: string}
+        userId: {type: string, format: uuid}
+        status: {type: string, const: CANCELLATION_PENDING}
+        paymentStatus: {type: string, const: SUCCEEDED}
+        refundStatus: {type: string, const: REQUESTED}
+        amountCent: {type: integer, minimum: 1}
+        currency: {type: string, const: CNY}
+        paymentOrderId: {type: string, format: uuid}

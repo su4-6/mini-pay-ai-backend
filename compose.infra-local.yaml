@@ -1,0 +1,8 @@
+# 本地开发辅助 override：Docker Hub 拉取 mysql:8.4 / seata-server 受限时，
+# 使用本机已有的 mysql:8.0 镜像启动基础设施。仅本地使用，勿提交。
+# 用法：MYSQL_CORE_PORT=3307 docker compose -f compose.yaml -f compose.infra-local.yaml up -d mysql-core redis rabbitmq
+# 说明：宿主机 3306 被原生 MySQL 占用，故通过 MYSQL_CORE_PORT=3307 将 mysql-core 映射到 3307，
+#      启动后各服务需以 MYSQL_URL 指向 localhost:3307。
+services:
+  mysql-core:
+    image: mysql:8.0

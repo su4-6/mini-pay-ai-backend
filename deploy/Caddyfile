@@ -1,0 +1,27 @@
+{$IDENTITY_DOMAIN} {
+    reverse_proxy 127.0.0.1:8081
+}
+{$PAYMENT_DOMAIN} {
+    reverse_proxy 127.0.0.1:8082
+}
+{$WALLET_DOMAIN} {
+    reverse_proxy 127.0.0.1:8083
+}
+{$COMMERCE_DOMAIN} {
+    reverse_proxy 127.0.0.1:8085
+}
+{$AGENT_DOMAIN} {
+    reverse_proxy 127.0.0.1:8086
+}
+{$MERCHANT_DOMAIN} {
+    reverse_proxy 127.0.0.1:18080
+}
+{$MANAGEMENT_DOMAIN} {
+    reverse_proxy 127.0.0.1:18081
+}
+{$ADMIN_DOMAIN} {
+    reverse_proxy 127.0.0.1:18082
+}
+{$FOOD_DOMAIN} {
+    reverse_proxy 127.0.0.1:14173
+}

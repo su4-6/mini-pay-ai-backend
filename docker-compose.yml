@@ -1,0 +1,62 @@
+name: minipay
+
+# Canonical local entrypoint. The core topology is kept in compose.yaml because
+# the currently running Java and middleware containers were created from it.
+include:
+  - path: compose.yaml
+
+services:
+  # The current yshop process already uses a host-built JAR mounted read-only.
+  # Rebuilding the JAR locally is enough to pick up future source changes.
+  yshop-bridge:
+    container_name: minipay-yshop-bridge
+    image: minipay-java-volume:local
+    build:
+      context: .
+      dockerfile: docker/volume/java-runtime.Dockerfile
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    command: ["--server.port=48081"]
+    environment:
+      SPRING_DATASOURCE_DYNAMIC_DATASOURCE_MASTER_URL: jdbc:mysql://mysql:3306/yixiang-drink-open?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&nullCatalogMeansCurrent=true
+      SPRING_DATASOURCE_DYNAMIC_DATASOURCE_MASTER_USERNAME: root
+      SPRING_DATASOURCE_DYNAMIC_DATASOURCE_MASTER_PASSWORD: ${MYSQL_PASSWORD:-minipay}
+      SPRING_DATASOURCE_DYNAMIC_DATASOURCE_SLAVE_URL: jdbc:mysql://mysql:3306/yixiang-drink-open?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&nullCatalogMeansCurrent=true
+      SPRING_DATASOURCE_DYNAMIC_DATASOURCE_SLAVE_USERNAME: root
+      SPRING_DATASOURCE_DYNAMIC_DATASOURCE_SLAVE_PASSWORD: ${MYSQL_PASSWORD:-minipay}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-minipay}
+      SPRING_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-minipay}
+      MINIPAY_COMMERCE_INTERNAL_URL: http://commerce-service:8085
+      YSHOP_MINIPAY_H5_ORIGIN: http://127.0.0.1:4173
+      YSHOP_MINIPAY_HMAC_SECRET: ${YSHOP_MINIPAY_HMAC_SECRET:-minipay-yshop-local-hmac-secret-change-me}
+      YSHOP_MINIPAY_ALLOW_GENERIC_ADDRESS: "true"
+    ports:
+      - "127.0.0.1:48081:48081"
+    volumes:
+      - ../yshop-drink/yshop-drink-boot3/yshop-server/target/yshop-server.jar:/app/app.jar:ro
+    healthcheck:
+      test: ["CMD-SHELL", "grep -aq java /proc/1/cmdline"]
+      interval: 10s
+      timeout: 3s
+      retries: 18
+      start_period: 45s
+
+  # This reproduces the currently running static H5 container: no source is
+  # copied into the image; the host build directory is the source of truth.
+  food-h5:
+    container_name: minipay-food-h5
+    image: python:3.13-alpine
+    restart: unless-stopped
+    command: ["python", "-m", "http.server", "4173", "--bind", "0.0.0.0", "--directory", "/site"]
+    ports:
+      - "127.0.0.1:4173:4173"
+    volumes:
+      - ../yshop-drink/yshop-drink-uniapp-vue3/unpackage/dist/build/h5-minipay:/site:ro

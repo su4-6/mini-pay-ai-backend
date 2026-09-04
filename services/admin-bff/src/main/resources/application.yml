@@ -1,0 +1,58 @@
+server:
+  port: ${SERVER_PORT:8089}
+  shutdown: graceful
+  reactive:
+    session:
+      cookie:
+        name: ${SPRING_SESSION_COOKIE_NAME:__Host-minipay-admin}
+        http-only: true
+        secure: ${SESSION_COOKIE_SECURE:true}
+        same-site: strict
+        path: /
+spring:
+  application:
+    name: admin-bff
+  security:
+    oauth2:
+      client:
+        registration:
+          minipay-admin:
+            provider: minipay-identity
+            client-id: ${ADMIN_OAUTH_CLIENT_ID:minipay-admin-bff}
+            client-secret: ${ADMIN_OAUTH_CLIENT_SECRET:minipay-admin-demo-secret}
+            client-authentication-method: client_secret_basic
+            authorization-grant-type: authorization_code
+            redirect-uri: ${ADMIN_OAUTH_REDIRECT_URI:http://localhost:8089/login/oauth2/code/minipay-admin}
+            scope: openid,profile,admin.portal,admin.account.read,admin.account.write,admin.backoffice.write,admin.order.read,admin.wallet.read,admin.audit.read
+        provider:
+          minipay-identity:
+            authorization-uri: ${IDENTITY_PUBLIC_URL:http://localhost:8081}/oauth2/authorize
+            token-uri: ${IDENTITY_INTERNAL_URL:http://localhost:8081}/oauth2/token
+            jwk-set-uri: ${IDENTITY_INTERNAL_URL:http://localhost:8081}/oauth2/jwks
+            user-info-uri: ${IDENTITY_INTERNAL_URL:http://localhost:8081}/userinfo
+            user-name-attribute: sub
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  session:
+    timeout: ${ADMIN_SESSION_TIMEOUT:30m}
+    redis:
+      namespace: minipay:session:admin
+minipay:
+  identity-public-url: ${IDENTITY_PUBLIC_URL:http://localhost:8081}
+  admin-web-url: ${ADMIN_WEB_PUBLIC_URL:http://localhost:8002/}
+  identity-internal-url: ${IDENTITY_INTERNAL_URL:http://localhost:8081}
+  payment-internal-url: ${PAYMENT_INTERNAL_URL:http://localhost:8082}
+  wallet-internal-url: ${WALLET_INTERNAL_URL:http://localhost:8083}
+  commerce-internal-url: ${COMMERCE_INTERNAL_URL:http://localhost:8085}
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus

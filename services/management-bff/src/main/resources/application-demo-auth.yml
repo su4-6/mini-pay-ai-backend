@@ -1,0 +1,17 @@
+server:
+  reactive:
+    session:
+      cookie:
+        name: minipay-management-demo
+        http-only: true
+        secure: false
+        same-site: lax
+        path: /
+
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          minipay-ops:
+            client-secret: ${MANAGEMENT_OAUTH_CLIENT_SECRET:minipay-management-demo-secret}

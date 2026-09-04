@@ -1,0 +1,16 @@
+.idea/
+.vscode/
+.run/
+.claude/
+*.iml
+*.log
+.env
+.env.production
+/.env.deploy
+.secrets/
+.local-secrets/
+target/
+**/target/
+.DS_Store
+Thumbs.db
+backend-*.tar.gz

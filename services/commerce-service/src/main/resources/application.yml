@@ -1,0 +1,72 @@
+server:
+  port: ${SERVER_PORT:8085}
+  shutdown: graceful
+
+spring:
+  application:
+    name: commerce-service
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${MYSQL_URL:jdbc:mysql://localhost:3306/minipay_commerce?preserveInstants=true&connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true}
+    username: ${MYSQL_USERNAME:minipay}
+    password: ${MYSQL_PASSWORD:minipay}
+  flyway:
+    enabled: true
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:minipay}
+    password: ${RABBITMQ_PASSWORD:minipay}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    listener:
+      simple:
+        default-requeue-rejected: false
+
+minipay:
+  security:
+    issuer: ${OIDC_ISSUER:http://localhost:8081}
+    jwk-set-uri: ${OIDC_JWK_SET_URI:http://localhost:8081/oauth2/jwks}
+  commerce:
+    food-provider: ${MINIPAY_FOOD_PROVIDER:sandbox}
+    food-h5-origin: ${MINIPAY_FOOD_H5_ORIGIN:https://food.minipay.local}
+    yshop:
+      base-url: ${YSHOP_INTERNAL_URL:http://localhost:48081}
+      hmac-secret: ${YSHOP_MINIPAY_HMAC_SECRET:}
+    identity:
+      base-url: ${IDENTITY_INTERNAL_URL:http://localhost:8081}
+      client-id: ${COMMERCE_TO_IDENTITY_CLIENT_ID:minipay-commerce-to-identity}
+      client-secret: ${COMMERCE_TO_IDENTITY_CLIENT_SECRET:minipay-commerce-identity-demo-secret}
+    address-encryption-key: ${COMMERCE_ADDRESS_ENCRYPTION_KEY:bWluaXBheS1jb21tZXJjZS1kZW1vLWtleS0zMmJ5dGU=}
+    address-encryption-key-version: ${COMMERCE_ADDRESS_ENCRYPTION_KEY_VERSION:1}
+    quote-ttl: ${COMMERCE_QUOTE_TTL:10m}
+    order-payment-ttl: ${COMMERCE_ORDER_PAYMENT_TTL:15m}
+    outbox-delay: ${COMMERCE_OUTBOX_DELAY:500ms}
+    sandbox:
+      progress-delay: ${COMMERCE_PROGRESS_DELAY:5s}
+      acceptance-delay: ${COMMERCE_ACCEPTANCE_DELAY:15s}
+      preparation-delay: ${COMMERCE_PREPARATION_DELAY:30s}
+      delivery-start-delay: ${COMMERCE_DELIVERY_START_DELAY:45s}
+      delivered-delay: ${COMMERCE_DELIVERED_DELAY:60s}
+
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+    default-fetch-size: 100
+    default-statement-timeout: 5
+
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+

@@ -1,0 +1,67 @@
+server:
+  port: ${SERVER_PORT:8088}
+  shutdown: graceful
+  reactive:
+    session:
+      cookie:
+        name: ${SPRING_SESSION_COOKIE_NAME:__Host-minipay-management}
+        http-only: true
+        secure: ${SESSION_COOKIE_SECURE:true}
+        same-site: strict
+        path: /
+
+spring:
+  application:
+    name: management-bff
+  codec:
+    max-in-memory-size: 6MB
+  security:
+    oauth2:
+      client:
+        registration:
+          minipay-ops:
+            provider: minipay-identity
+            client-id: ${MANAGEMENT_OAUTH_CLIENT_ID:minipay-management-bff}
+            client-secret: ${MANAGEMENT_OAUTH_CLIENT_SECRET:minipay-management-demo-secret}
+            client-authentication-method: client_secret_basic
+            authorization-grant-type: authorization_code
+            redirect-uri: ${MANAGEMENT_OAUTH_REDIRECT_URI:http://localhost:8088/login/oauth2/code/minipay-ops}
+            scope: openid,profile,ops.portal,ops.audit.read,ops.dashboard.read,ops.merchant.read,ops.merchant.write,ops.application.read,ops.application.write
+        provider:
+          minipay-identity:
+            authorization-uri: ${IDENTITY_PUBLIC_URL:http://localhost:8081}/oauth2/authorize
+            token-uri: ${IDENTITY_INTERNAL_URL:http://localhost:8081}/oauth2/token
+            jwk-set-uri: ${IDENTITY_INTERNAL_URL:http://localhost:8081}/oauth2/jwks
+            user-info-uri: ${IDENTITY_INTERNAL_URL:http://localhost:8081}/userinfo
+            user-name-attribute: sub
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  session:
+    timeout: ${MANAGEMENT_SESSION_TIMEOUT:30m}
+    redis:
+      namespace: minipay:session:management
+      flush-mode: on_save
+
+minipay:
+  identity-internal-url: ${IDENTITY_INTERNAL_URL:http://localhost:8081}
+  identity-public-url: ${IDENTITY_PUBLIC_URL:http://localhost:8081}
+  ops-web-url: ${OPS_WEB_PUBLIC_URL:http://localhost:8000/}
+  merchant-web-url: ${MERCHANT_WEB_PUBLIC_URL:http://localhost:8001/}
+  payment-internal-url: ${PAYMENT_INTERNAL_URL:http://localhost:8082}
+  wallet-internal-url: ${WALLET_INTERNAL_URL:http://localhost:8083}
+  commerce-internal-url: ${COMMERCE_INTERNAL_URL:http://localhost:8085}
+  merchant-oauth-client-id: ${MERCHANT_BFF_OAUTH_CLIENT_ID:minipay-merchant-bff}
+  merchant-oauth-redirect-uri: ${MERCHANT_BFF_OAUTH_REDIRECT_URI:http://localhost:8088/merchant/oauth2/code}
+
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus

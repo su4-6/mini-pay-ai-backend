@@ -1,0 +1,39 @@
+openapi: 3.1.0
+info: {title: MiniPay Management API, version: 1.0.0-draft}
+paths:
+  /api/v1/management/payment-orders:
+    get:
+      summary: List payment orders within verified merchant or operations scope
+      security: [{minipayOAuth: [ops.portal]}]
+      x-minipay-audience: management-api
+      parameters: [{$ref: '#/components/parameters/Page'}, {$ref: '#/components/parameters/Size'}, {name: status, in: query, schema: {type: string}}]
+      responses: {'200': {description: Order page, content: {application/json: {schema: {$ref: '#/components/schemas/PaymentOrderPage'}}}}, '403': {$ref: '#/components/responses/Problem'}}
+  /api/v1/management/refunds:
+    get:
+      summary: List refunds within verified merchant or operations scope
+      security: [{minipayOAuth: [ops.portal]}]
+      x-minipay-audience: management-api
+      parameters: [{$ref: '#/components/parameters/Page'}, {$ref: '#/components/parameters/Size'}]
+      responses: {'200': {description: Refund page, content: {application/json: {schema: {$ref: '#/components/schemas/RefundPage'}}}}, '403': {$ref: '#/components/responses/Problem'}}
+components:
+  securitySchemes:
+    minipayOAuth:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: http://localhost:8081/oauth2/authorize
+          tokenUrl: http://localhost:8081/oauth2/token
+          scopes:
+            ops.portal: Access the operations portal
+            ops.audit.read: Read authentication and operation audits
+  parameters:
+    Page: {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+    Size: {name: size, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+  schemas:
+    PaymentOrder: {type: object, required: [paymentOrderId, merchantId, amountCent, status, createdAt], properties: {paymentOrderId: {type: string, format: uuid}, merchantId: {type: string, format: uuid}, amountCent: {type: integer}, status: {type: string}, createdAt: {type: string, format: date-time}}}
+    Refund: {type: object, required: [refundId, paymentOrderId, amountCent, status], properties: {refundId: {type: string, format: uuid}, paymentOrderId: {type: string, format: uuid}, amountCent: {type: integer}, status: {type: string}, updatedAt: {type: string, format: date-time}}}
+    PaymentOrderPage: {type: object, required: [items, page, size, total], properties: {items: {type: array, items: {$ref: '#/components/schemas/PaymentOrder'}}, page: {type: integer}, size: {type: integer}, total: {type: integer}}}
+    RefundPage: {type: object, required: [items, page, size, total], properties: {items: {type: array, items: {$ref: '#/components/schemas/Refund'}}, page: {type: integer}, size: {type: integer}, total: {type: integer}}}
+    Problem: {$ref: './components/problem-details-v1.yaml#/components/schemas/ProblemDetails'}
+  responses:
+    Problem: {description: Problem Details, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}

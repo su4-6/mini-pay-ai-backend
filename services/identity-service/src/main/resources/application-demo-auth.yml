@@ -1,0 +1,48 @@
+spring:
+  # 本地 JVM 启动时也读取项目根目录的 .env（gitignored，模板见 .env.example）。
+  # [.properties] 强制按 properties 格式解析：Spring Boot 不识别 .env 扩展名，optional 会静默吞掉解析失败。
+  # 双路径覆盖两种启动工作目录：项目根（./）或模块目录 services/xxx（../../）；缺失时 optional 静默回退。
+  config:
+    import: optional:file:./.env[.properties],optional:file:../../.env[.properties]
+  flyway:
+      locations: classpath:db/migration,classpath:db/demo
+
+server:
+  servlet:
+    session:
+      cookie:
+        name: minipay-identity-demo
+        http-only: true
+        secure: false
+        same-site: lax
+        path: /
+
+minipay:
+  identity:
+    phone-hash-pepper: ${PHONE_HASH_PEPPER:minipay-demo-phone-pepper-change-me}
+    email-hash-pepper: ${EMAIL_HASH_PEPPER:minipay-demo-email-pepper-change-me}
+    token-digest-pepper: ${TOKEN_DIGEST_PEPPER:minipay-demo-token-pepper-change-me}
+    real-name:
+      provider: ${REAL_NAME_PROVIDER:sandbox}
+      # Local demo only. Deployed environments must use an independent Secret.
+      hmac-key: ${REAL_NAME_HMAC_KEY:minipay-demo-real-name-hmac-key-change-me}
+    audit-hash-pepper: ${AUTH_AUDIT_PEPPER:minipay-demo-audit-pepper-change-me}
+    captcha-pepper: ${CAPTCHA_PEPPER:minipay-demo-captcha-pepper-change-me}
+    management-client:
+      client-secret: ${MANAGEMENT_OAUTH_CLIENT_SECRET:minipay-management-demo-secret}
+    android-client:
+      client-id: ${ANDROID_OAUTH_CLIENT_ID:minipay-android}
+      redirect-uri: ${ANDROID_OAUTH_REDIRECT_URI:com.minipay.mobile:/oauth2redirect}
+    internal-clients:
+      payment-to-identity:
+        client-secret: ${PAYMENT_TO_IDENTITY_CLIENT_SECRET:minipay-payment-identity-demo-secret}
+      payment-to-wallet:
+        client-secret: ${PAYMENT_TO_WALLET_CLIENT_SECRET:minipay-payment-wallet-demo-secret}
+      agent-to-payment:
+        client-secret: ${AGENT_TO_PAYMENT_CLIENT_SECRET:minipay-agent-payment-demo-secret}
+      identity-to-payment:
+        client-id: ${IDENTITY_TO_PAYMENT_CLIENT_ID:minipay-identity-to-payment}
+        client-secret: ${IDENTITY_TO_PAYMENT_CLIENT_SECRET:minipay-identity-payment-demo-secret}
+    sms:
+      # 默认 demo（固定验证码 123456）；.env 配置 SMS_PROVIDER=dypns 时切换为真实号码认证短信。
+      provider: ${SMS_PROVIDER:demo}

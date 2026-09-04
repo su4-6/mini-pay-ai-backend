@@ -1,0 +1,140 @@
+openapi: 3.1.0
+info:
+  title: MiniPay yshop Food Integration API
+  version: 1.2.0
+  description: Android/H5 integration contract. All amounts are authoritative integer CNY cents.
+servers: [{url: http://localhost:8085}]
+security: [{minipayOAuth: [commerce.use]}]
+paths:
+  /api/v1/commerce/food-entry-status:
+    get:
+      operationId: getFoodEntryStatus
+      responses: {'200': {description: Server-authoritative entry decision, content: {application/json: {schema: {$ref: '#/components/schemas/EntryStatus'}}}}}
+  /api/v1/commerce/food-binding:
+    get:
+      operationId: getFoodBinding
+      responses: {'200': {description: Binding state, content: {application/json: {schema: {$ref: '#/components/schemas/Binding'}}}}}
+    delete:
+      operationId: revokeFoodBinding
+      responses: {'204': {description: Revoked}}
+  /api/v1/commerce/food-bindings:
+    post:
+      operationId: createFoodBinding
+      responses: {'201': {description: Bound, content: {application/json: {schema: {$ref: '#/components/schemas/Binding'}}}}}
+  /api/v1/commerce/food-handoffs:
+    post:
+      operationId: createFoodHandoff
+      parameters: [{name: X-Device-Id, in: header, required: true, schema: {type: string}}]
+      responses: {'201': {description: Sixty-second single-use handoff, content: {application/json: {schema: {$ref: '#/components/schemas/Handoff'}}}}}
+  /api/v1/commerce/food-location-contexts:
+    post:
+      operationId: createFoodLocationContext
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/LocationRequest'}}}}
+      responses: {'201': {description: Five-minute opaque location context, content: {application/json: {schema: {$ref: '#/components/schemas/LocationContext'}}}}}
+  /api/v1/commerce/food-orders:
+    get:
+      operationId: listFoodOrders
+      parameters:
+        - {name: page, in: query, schema: {type: integer, minimum: 0, default: 0}}
+        - {name: size, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+      responses: {'200': {description: yshop orders, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/FoodOrder'}}}}}}
+  /api/v1/commerce/food-orders/{orderId}:
+    get:
+      operationId: getFoodOrder
+      parameters: [{$ref: '#/components/parameters/OrderId'}]
+      responses: {'200': {description: Full current-user order, content: {application/json: {schema: {$ref: '#/components/schemas/FoodOrder'}}}}}
+  /api/v1/commerce/food-orders/{externalOrderNo}/payment-orders:
+    post:
+      operationId: prepareExternalFoodPayment
+      description: Rereads yshop ownership, amount, status and expiry. An amount field is never accepted.
+      parameters:
+        - {name: externalOrderNo, in: path, required: true, schema: {type: string, maxLength: 64}}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      responses:
+        '202': {description: Payment creation accepted, content: {application/json: {schema: {$ref: '#/components/schemas/FoodOrder'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/v1/commerce/food-checkouts/{quoteId}/orders:
+    post:
+      operationId: createFoodOrderFromQuote
+      parameters:
+        - {name: quoteId, in: path, required: true, schema: {type: string, format: uuid}}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      responses: {'201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/FoodOrder'}}}}}
+  /api/v1/commerce/food-orders/{orderId}/cancellation-requests:
+    post:
+      operationId: requestFoodCancellation
+      parameters: [{$ref: '#/components/parameters/OrderId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      responses: {'200': {description: Current state, content: {application/json: {schema: {$ref: '#/components/schemas/FoodOrder'}}}}}
+components:
+  securitySchemes:
+    minipayOAuth: {type: oauth2, flows: {authorizationCode: {authorizationUrl: http://localhost:8081/oauth2/authorize, tokenUrl: http://localhost:8081/oauth2/token, scopes: {commerce.use: Use food commerce}}}}
+  parameters:
+    OrderId: {name: orderId, in: path, required: true, schema: {type: string, format: uuid}}
+    IdempotencyKey: {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 128}}
+  schemas:
+    EntryStatus:
+      type: object
+      required: [state, bindingActive, profileUpgradeRequired, grantedScopes, locationAllowed]
+      properties:
+        state: {type: string, enum: [READY, NOT_AUTHORIZED, PHONE_UPGRADE_REQUIRED, SYNC_FAILED]}
+        bindingActive: {type: boolean}
+        profileUpgradeRequired: {type: boolean}
+        grantedScopes: {type: array, uniqueItems: true, items: {type: string}}
+        locationAllowed: {type: boolean}
+    Binding:
+      type: object
+      required: [provider, subject, active]
+      properties: {bindingId: {type: [string, 'null'], format: uuid}, provider: {const: YSHOP}, subject: {type: string, format: uuid}, active: {type: boolean}, createdAt: {type: [string, 'null'], format: date-time}, username: {type: [string, 'null'], maxLength: 128}}
+    Handoff:
+      type: object
+      required: [code, deviceProof, origin, expiresAt]
+      properties: {code: {type: string, writeOnly: true}, deviceProof: {type: string, writeOnly: true}, origin: {type: string, format: uri}, expiresAt: {type: string, format: date-time}}
+    LocationRequest:
+      type: object
+      additionalProperties: false
+      required: [longitude, latitude, capturedAt]
+      properties: {longitude: {type: number, minimum: -180, maximum: 180}, latitude: {type: number, minimum: -90, maximum: 90}, accuracyMeters: {type: [number, 'null'], minimum: 0, maximum: 10000}, capturedAt: {type: string, format: date-time}, source: {type: string, const: AMAP_GCJ02}}
+    LocationContext:
+      type: object
+      required: [locationContextId, expiresAt]
+      properties: {locationContextId: {type: string, format: uuid}, expiresAt: {type: string, format: date-time}}
+    FoodOrder:
+      type: object
+      required: [orderRefId, externalOrderNo, amountCent, currency, paymentStatus, fulfillmentStatus, refundStatus, expiresAt, createdAt, items, totalQuantity, subtotalCent, deliveryFeeCent, discountCent]
+      properties:
+        orderRefId: {type: string, format: uuid}
+        externalOrderNo: {type: string}
+        amountCent: {type: integer, format: int64, minimum: 0}
+        currency: {type: string, const: CNY}
+        paymentOrderId: {type: [string, 'null'], format: uuid}
+        paymentStatus: {type: string, enum: [UNPAID, PROCESSING, PAID, FAILED, CLOSED]}
+        fulfillmentStatus: {type: string, enum: [PLACED, PREPARING, DELIVERING, READY_FOR_PICKUP, COMPLETED, CANCELLED]}
+        refundStatus: {type: string, enum: [NONE, REQUESTED, PROCESSING, REFUNDED, REJECTED]}
+        expiresAt: {type: string, format: date-time}
+        createdAt: {type: string, format: date-time}
+        storeName: {type: [string, 'null']}
+        fulfillmentType: {type: [string, 'null']}
+        recipient: {type: [string, 'null'], writeOnly: true}
+        phone: {type: [string, 'null'], writeOnly: true}
+        address: {type: [string, 'null'], writeOnly: true}
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/FoodOrderItem'}
+        totalQuantity: {type: integer, format: int32, minimum: 0}
+        subtotalCent: {type: integer, format: int64, minimum: 0}
+        deliveryFeeCent: {type: integer, format: int64, minimum: 0}
+        discountCent: {type: integer, format: int64, minimum: 0}
+    FoodOrderItem:
+      type: object
+      required: [productId, name, quantity, unitPriceCent, lineAmountCent]
+      properties:
+        productId: {type: integer, format: int64}
+        name: {type: string}
+        sku: {type: [string, 'null']}
+        image: {type: [string, 'null'], format: uri-reference}
+        quantity: {type: integer, format: int32, minimum: 1}
+        unitPriceCent: {type: integer, format: int64, minimum: 0}
+        lineAmountCent: {type: integer, format: int64, minimum: 0}
+    Problem: {$ref: './components/problem-details-v1.yaml#/components/schemas/ProblemDetails'}
+  responses:
+    Problem: {description: RFC 9457 error, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}

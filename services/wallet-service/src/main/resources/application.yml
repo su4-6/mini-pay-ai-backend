@@ -1,0 +1,68 @@
+server:
+  port: ${SERVER_PORT:8083}
+  shutdown: graceful
+
+spring:
+  application:
+    name: wallet-service
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${MYSQL_URL:jdbc:mysql://localhost:3306/minipay_wallet}
+    username: ${WALLET_MYSQL_USERNAME:minipay_wallet_app}
+    password: ${WALLET_MYSQL_PASSWORD:${MYSQL_WALLET_PASSWORD:minipay-wallet}}
+  flyway:
+    enabled: true
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:minipay}
+    password: ${RABBITMQ_PASSWORD:minipay}
+
+wallet:
+  partition-id: ${WALLET_PARTITION_ID:PRIMARY}
+
+minipay:
+  clients:
+    identity:
+      base-url: ${IDENTITY_INTERNAL_URL:http://localhost:8081}
+      client-id: ${WALLET_TO_IDENTITY_CLIENT_ID:minipay-wallet-to-identity}
+      client-secret: ${WALLET_TO_IDENTITY_CLIENT_SECRET:minipay-wallet-identity-demo-secret}
+  wallet:
+    annual-outflow-limit-cent: ${WALLET_UNBOUND_ANNUAL_OUTFLOW_LIMIT_CENT:20000000}
+  security:
+    issuer: ${IDENTITY_ISSUER:http://localhost:8081}
+    jwk-set-uri: ${IDENTITY_INTERNAL_URL:http://localhost:8081}/oauth2/jwks
+
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+    default-fetch-size: 100
+    default-statement-timeout: 5
+
+seata:
+  enabled: ${SEATA_ENABLED:true}
+  application-id: ${spring.application.name}-${wallet.partition-id}
+  tx-service-group: minipay_tx_group
+  enable-auto-data-source-proxy: false
+  service:
+    vgroup-mapping:
+      minipay_tx_group: default
+    grouplist:
+      default: ${SEATA_SERVER_ADDR:localhost:8091}
+  config:
+    type: file
+  registry:
+    type: file
+
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus

@@ -1,0 +1,108 @@
+server:
+  port: ${SERVER_PORT:8082}
+  shutdown: graceful
+
+spring:
+  # Local JVM/IDE runs do not automatically read the repository .env file.
+  # Both paths are optional so deployed environment variables remain authoritative.
+  config:
+    import: optional:file:./.env[.properties],optional:file:../../.env[.properties]
+  application:
+    name: payment-service
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${MYSQL_URL:jdbc:mysql://localhost:3306/minipay_payment}
+    username: ${PAYMENT_MYSQL_USERNAME:${MYSQL_USERNAME:minipay}}
+    password: ${PAYMENT_MYSQL_PASSWORD:${MYSQL_PAYMENT_PASSWORD:${MYSQL_PASSWORD:minipay}}}
+  flyway:
+    enabled: true
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:minipay}
+    password: ${RABBITMQ_PASSWORD:minipay}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    listener:
+      simple:
+        default-requeue-rejected: false
+
+minipay:
+  security:
+    issuer: ${IDENTITY_ISSUER:http://localhost:8081}
+    jwk-set-uri: ${IDENTITY_INTERNAL_URL:http://localhost:8081}/oauth2/jwks
+  ops:
+    dashboard-zone: ${OPS_DASHBOARD_TIMEZONE:Asia/Shanghai}
+    pending-threshold: ${OPS_PENDING_THRESHOLD:PT15M}
+  clients:
+    identity-token-url: ${IDENTITY_INTERNAL_URL:http://localhost:8081}/oauth2/token
+    identity:
+      base-url: ${IDENTITY_INTERNAL_URL:http://localhost:8081}
+      client-id: ${PAYMENT_IDENTITY_CLIENT_ID:minipay-payment-to-identity}
+      # This sandbox default intentionally matches Identity's documented demo client.
+      # Deployments must override it through PAYMENT_TO_IDENTITY_CLIENT_SECRET.
+      client-secret: ${PAYMENT_IDENTITY_CLIENT_SECRET:${PAYMENT_TO_IDENTITY_CLIENT_SECRET:minipay-payment-identity-demo-secret}}
+    wallet:
+      client-id: ${PAYMENT_WALLET_CLIENT_ID:minipay-payment-to-wallet}
+      # Keep the legacy service-specific override, but share Identity's registration secret
+      # when it is absent so standalone local runs do not fail wallet account resolution.
+      client-secret: ${PAYMENT_WALLET_CLIENT_SECRET:${PAYMENT_TO_WALLET_CLIENT_SECRET:minipay-payment-wallet-demo-secret}}
+      base-url: ${WALLET_BASE_URL:http://localhost:8083}
+  channels:
+    bank:
+      sandbox-tokenization-key: ${BANK_SANDBOX_TOKENIZATION_KEY:local-bank-tokenization-key-change-me-32}
+      initial-balance-cent: ${BANK_SANDBOX_INITIAL_BALANCE_CENT:10000000}
+      single-payment-limit-cent: ${BANK_SANDBOX_SINGLE_PAYMENT_LIMIT_CENT:1000000}
+      daily-payment-limit-cent: ${BANK_SANDBOX_DAILY_PAYMENT_LIMIT_CENT:5000000}
+    collection-code:
+      signing-key: ${COLLECTION_CODE_SIGNING_KEY:local-collection-code-signing-key-change-me}
+  payment:
+    # app_id of the single MiniPay merchant application receiving yshop food payments.
+    food-platform-merchant-app-id: ${FOOD_PLATFORM_MERCHANT_APP_ID:}
+    object-storage:
+      provider: ${OBJECT_STORAGE_PROVIDER:disabled}
+      endpoint: ${ALIYUN_OSS_ENDPOINT:}
+      region: ${ALIYUN_OSS_REGION:}
+      bucket: ${ALIYUN_OSS_BUCKET:}
+      ram-role-name: ${ALIYUN_OSS_RAM_ROLE_NAME:${ALIYUN_RAM_ROLE_NAME:}}
+      access-key-id: ${ALIYUN_OSS_ACCESS_KEY_ID:${ALIBABA_CLOUD_ACCESS_KEY_ID:${ALIYUN_ACCESS_KEY_ID:}}}
+      access-key-secret: ${ALIYUN_OSS_ACCESS_KEY_SECRET:${ALIBABA_CLOUD_ACCESS_KEY_SECRET:${ALIYUN_ACCESS_KEY_SECRET:}}}
+      security-token: ${ALIYUN_OSS_SECURITY_TOKEN:${ALIBABA_CLOUD_SECURITY_TOKEN:}}
+  merchant:
+    secret-encryption-key: ${MERCHANT_APP_SECRET_KEY:}
+
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+    default-fetch-size: 100
+    default-statement-timeout: 5
+
+seata:
+  enabled: ${SEATA_ENABLED:true}
+  application-id: ${spring.application.name}
+  tx-service-group: minipay_tx_group
+  enable-auto-data-source-proxy: false
+  service:
+    vgroup-mapping:
+      minipay_tx_group: default
+    grouplist:
+      default: ${SEATA_SERVER_ADDR:localhost:8091}
+  config:
+    type: file
+  registry:
+    type: file
+
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus

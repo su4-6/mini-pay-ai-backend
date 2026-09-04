@@ -1,0 +1,725 @@
+openapi: 3.1.0
+info:
+  title: MiniPay Payment API
+  version: 1.3.0
+  description: >
+    Consumer payment orchestration for transfer, bank-card funding, withdrawals,
+    selectable payment methods and personal collection codes. All external
+    channels in the current implementation are explicitly marked as sandbox.
+paths:
+  /api/v1/transfers:
+    post:
+      summary: Create an immutable transfer intent
+      security: [{minipayOAuth: [payment.transfer.write]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateTransferRequest'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/TransferIntent'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+        '422': {$ref: '#/components/responses/Problem'}
+  /api/v1/transfers/{intentId}/confirm:
+    post:
+      summary: Confirm a transfer intent with a one-time payment authorization
+      security: [{minipayOAuth: [payment.transfer.write]}]
+      x-minipay-audience: consumer-api
+      parameters:
+        - {$ref: '#/components/parameters/IntentId'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ConfirmRequest'}}}}
+      responses:
+        '200': {description: Current order state, content: {application/json: {schema: {$ref: '#/components/schemas/TransferOrder'}}}}
+        '202': {description: TCC confirmation is being recovered, content: {application/json: {schema: {$ref: '#/components/schemas/TransferOrder'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+        '503':
+          description: Seata is unavailable and no wallet branch was started
+          content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}
+  /api/v1/transfers/{intentId}:
+    delete:
+      summary: Cancel an unconfirmed transfer intent
+      security: [{minipayOAuth: [payment.transfer.write]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/IntentId'}]
+      responses:
+        '200': {description: Cancelled, content: {application/json: {schema: {$ref: '#/components/schemas/TransferIntent'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/v1/transfer-orders/{transferId}:
+    get:
+      summary: Get a consumer-owned transfer order
+      security: [{minipayOAuth: [payment.transfer.read]}]
+      x-minipay-audience: consumer-api
+      parameters:
+        - {name: transferId, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200': {description: Transfer order, content: {application/json: {schema: {$ref: '#/components/schemas/TransferOrder'}}}}
+        '404': {$ref: '#/components/responses/Problem'}
+
+  /api/v1/payment-orders:
+    post:
+      summary: Create a payment order and select Alipay, WeChat Pay or wallet balance
+      description: >
+        ALIPAY and WECHAT_PAY return a sandbox redirect. WALLET_BALANCE must be
+        confirmed separately after a one-time payment authorization is issued.
+      security: [{minipayOAuth: [payment.order.write]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreatePaymentOrderRequest'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/PaymentOrder'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+        '422': {$ref: '#/components/responses/Problem'}
+  /api/v1/payment-orders/{paymentOrderId}:
+    get:
+      summary: Get a consumer-owned payment order
+      security: [{minipayOAuth: [payment.order.read]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/PaymentOrderId'}]
+      responses:
+        '200': {description: Payment order, content: {application/json: {schema: {$ref: '#/components/schemas/PaymentOrder'}}}}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/v1/payment-orders/{paymentOrderId}/confirm:
+    post:
+      summary: Confirm any consumer-initiated payment with a one-time payment authorization
+      security: [{minipayOAuth: [payment.order.write]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/PaymentOrderId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ConfirmRequest'}}}}
+      responses:
+        '200': {description: Payment result, content: {application/json: {schema: {$ref: '#/components/schemas/PaymentOrder'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+        '422': {$ref: '#/components/responses/Problem'}
+  /api/v1/bank-cards:
+    get:
+      summary: List the current user's tokenized bank cards
+      security: [{minipayOAuth: [payment.bank-card.read]}]
+      x-minipay-audience: consumer-api
+      responses:
+        '200':
+          description: Cards
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/BankCard'}}
+    post:
+      summary: Bind and verify a debit card
+      description: >
+        The card number is write-only and is immediately tokenized by the bank
+        adapter. MiniPay persists only the provider token, bank name, mask and last four.
+        The current sandbox verification code is 123456.
+      security: [{minipayOAuth: [payment.bank-card.write]}]
+      x-minipay-audience: consumer-api
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/BindBankCardRequest'}}}}
+      responses:
+        '201': {description: Bound, content: {application/json: {schema: {$ref: '#/components/schemas/BankCard'}}}}
+        '422': {$ref: '#/components/responses/Problem'}
+  /api/v1/bank-cards/{cardId}:
+    get:
+      summary: Read one current-user tokenized bank card
+      security: [{minipayOAuth: [payment.bank-card.read]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/CardId'}]
+      responses:
+        '200': {description: Card, content: {application/json: {schema: {$ref: '#/components/schemas/BankCard'}}}}
+        '404': {$ref: '#/components/responses/Problem'}
+    delete:
+      summary: Disable a bound bank card
+      security: [{minipayOAuth: [payment.bank-card.write]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/CardId'}]
+      responses:
+        '204': {description: Disabled}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/v1/bank-cards/{cardId}/balance-queries:
+    post:
+      summary: Consume a one-time payment authorization and query sandbox bank balance
+      security: [{minipayOAuth: [payment.bank-card.read]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/CardId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/BankBalanceQueryRequest'}}}}
+      responses:
+        '200': {description: Balance, content: {application/json: {schema: {$ref: '#/components/schemas/BankBalance'}}}}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '422': {$ref: '#/components/responses/Problem'}
+  /api/v1/bank-cards/{cardId}/payment-limits:
+    get:
+      summary: Read sandbox bank payment limits
+      security: [{minipayOAuth: [payment.bank-card.read]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/CardId'}]
+      responses:
+        '200': {description: Limits, content: {application/json: {schema: {$ref: '#/components/schemas/BankPaymentLimits'}}}}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/v1/bank-cards/{cardId}/transactions:
+    get:
+      summary: List sandbox bank transactions for one card
+      security: [{minipayOAuth: [payment.bank-card.read]}]
+      x-minipay-audience: consumer-api
+      parameters:
+        - {$ref: '#/components/parameters/CardId'}
+        - {name: from, in: query, schema: {type: string, format: date-time}}
+        - {name: to, in: query, schema: {type: string, format: date-time}}
+        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: size, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+      responses:
+        '200': {description: Transaction page, content: {application/json: {schema: {$ref: '#/components/schemas/BankTransactionPage'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+
+  /api/v1/recharge-orders:
+    get:
+      summary: List current-consumer recharge applications
+      security: [{minipayOAuth: [payment.recharge.read]}]
+      x-minipay-audience: consumer-api
+      parameters:
+        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: size, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+      responses:
+        '200': {description: Recharge application page, content: {application/json: {schema: {$ref: '#/components/schemas/FundingOrderPage'}}}}
+    post:
+      summary: Create and execute a bank-card recharge
+      security: [{minipayOAuth: [payment.recharge.write]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/FundingRequest'}}}}
+      responses:
+        '201': {description: Current recharge state, content: {application/json: {schema: {$ref: '#/components/schemas/RechargeOrder'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+        '422': {$ref: '#/components/responses/Problem'}
+  /api/v1/recharge-orders/{rechargeId}:
+    get:
+      summary: Get a consumer-owned recharge order
+      security: [{minipayOAuth: [payment.recharge.read]}]
+      x-minipay-audience: consumer-api
+      parameters:
+        - {name: rechargeId, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200': {description: Recharge order, content: {application/json: {schema: {$ref: '#/components/schemas/RechargeOrder'}}}}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/v1/recharge-intents:
+    post:
+      summary: Prepare a bank-card recharge for payment-password authorization
+      security: [{minipayOAuth: [payment.recharge.write]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/FundingRequest'}}}}
+      responses:
+        '201': {description: Prepared recharge intent, content: {application/json: {schema: {$ref: '#/components/schemas/RechargeOrder'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+        '422': {$ref: '#/components/responses/Problem'}
+  /api/v1/recharge-intents/{rechargeId}/confirm:
+    post:
+      summary: Confirm a recharge with a one-time payment authorization
+      security: [{minipayOAuth: [payment.recharge.write]}]
+      x-minipay-audience: consumer-api
+      parameters:
+        - {name: rechargeId, in: path, required: true, schema: {type: string, format: uuid}}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ConfirmRequest'}}}}
+      responses:
+        '200': {description: Recharge result, content: {application/json: {schema: {$ref: '#/components/schemas/RechargeOrder'}}}}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '422': {$ref: '#/components/responses/Problem'}
+
+  /api/v1/withdrawal-orders:
+    get:
+      summary: List current-consumer withdrawal applications
+      security: [{minipayOAuth: [payment.withdrawal.read]}]
+      x-minipay-audience: consumer-api
+      parameters:
+        - {name: page, in: query, schema: {type: integer, minimum: 1, default: 1}}
+        - {name: size, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+      responses:
+        '200': {description: Withdrawal application page, content: {application/json: {schema: {$ref: '#/components/schemas/FundingOrderPage'}}}}
+    post:
+      summary: Create a bank-card withdrawal order
+      description: The order remains PROCESSING until separately confirmed with a one-time payment authorization.
+      security: [{minipayOAuth: [payment.withdrawal.write]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/FundingRequest'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/WithdrawalOrder'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/v1/withdrawal-orders/{withdrawalId}:
+    get:
+      summary: Get a consumer-owned withdrawal order
+      security: [{minipayOAuth: [payment.withdrawal.read]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/WithdrawalId'}]
+      responses:
+        '200': {description: Withdrawal order, content: {application/json: {schema: {$ref: '#/components/schemas/WithdrawalOrder'}}}}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/v1/withdrawal-orders/{withdrawalId}/confirm:
+    post:
+      summary: Confirm a withdrawal with a one-time payment authorization
+      security: [{minipayOAuth: [payment.withdrawal.write]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/WithdrawalId'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ConfirmRequest'}}}}
+      responses:
+        '200': {description: Withdrawal result, content: {application/json: {schema: {$ref: '#/components/schemas/WithdrawalOrder'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+        '422': {$ref: '#/components/responses/Problem'}
+
+  /api/v1/personal-collection-codes/current:
+    get:
+      summary: Get or rotate the current personal collection code
+      security: [{minipayOAuth: [payment.collection-code.read]}]
+      x-minipay-audience: consumer-api
+      responses:
+        '200': {description: Collection code, content: {application/json: {schema: {$ref: '#/components/schemas/PersonalCollectionCode'}}}}
+  /api/v1/merchant/onboardings:
+    get:
+      summary: List the current consumer's merchant onboarding
+      description: Consumer responses always expose the fixed merchant type INDIVIDUAL.
+      security: [{minipayOAuth: [merchant.portal.read]}]
+      x-minipay-audience: consumer-api
+      parameters:
+        - {name: page, in: query, schema: {type: integer, minimum: 0, default: 0}}
+        - {name: size, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+      responses:
+        '200': {description: Onboarding page, content: {application/json: {schema: {$ref: '#/components/schemas/MerchantOnboardingPage'}}}}
+    post:
+      summary: Submit the current consumer's single merchant onboarding
+      description: The merchantType field is retained for old clients but is always normalized to INDIVIDUAL.
+      security: [{minipayOAuth: [merchant.portal.write]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/MerchantOnboardingRequest'}}}}
+      responses:
+        '201': {description: Submitted onboarding, content: {application/json: {schema: {$ref: '#/components/schemas/MerchantOnboarding'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+        '422': {$ref: '#/components/responses/Problem'}
+  /api/v1/merchant/onboardings/{applyId}:
+    put:
+      summary: Resubmit the current consumer's rejected or supplemented onboarding
+      description: The merchantType field is retained for old clients but is always normalized to INDIVIDUAL.
+      security: [{minipayOAuth: [merchant.portal.write]}]
+      x-minipay-audience: consumer-api
+      parameters:
+        - {name: applyId, in: path, required: true, schema: {type: integer, format: int64, minimum: 1}}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/MerchantOnboardingResubmitRequest'}}}}
+      responses:
+        '200': {description: Resubmitted onboarding, content: {application/json: {schema: {$ref: '#/components/schemas/MerchantOnboarding'}}}}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '422': {$ref: '#/components/responses/Problem'}
+  /api/v1/scan-resolutions:
+    post:
+      summary: Resolve an opaque personal or merchant collection token
+      security: [{minipayOAuth: [payment.collection-code.read]}]
+      x-minipay-audience: consumer-api
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ScanResolutionRequest'}}}}
+      responses:
+        '200':
+          description: Resolution
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - {$ref: '#/components/schemas/ScanResolution'}
+                  - {$ref: '#/components/schemas/MerchantCollectionResolution'}
+                discriminator: {propertyName: type}
+        '422': {$ref: '#/components/responses/Problem'}
+
+  /api/v1/refunds:
+    post:
+      summary: Create one full refund for a successful sandbox wallet-balance payment
+      security: [{minipayOAuth: [payment.refund.write]}]
+      x-minipay-audience: management-api
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateRefundRequest'}}}}
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/Refund'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+
+  /internal/v1/channel-callbacks/sandbox/payment-orders/{paymentOrderId}:
+    post:
+      summary: Complete an authorized sandbox-channel payment from a trusted callback
+      security: [{minipayOAuth: [payment.tool.invoke]}]
+      x-minipay-audience: internal-api
+      parameters: [{$ref: '#/components/parameters/PaymentOrderId'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [succeeded]
+              properties:
+                succeeded: {type: boolean}
+      responses:
+        '200': {description: Current payment state, content: {application/json: {schema: {$ref: '#/components/schemas/PaymentOrder'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+
+  /internal/v1/agent/transfer-intents:
+    post:
+      operationId: agentPrepareTransferIntent
+      summary: Prepare an immutable AI transfer intent; never confirms funds
+      security: [{delegatedBearer: [payment.agent.transfer.prepare]}]
+      x-minipay-audience: payment-internal
+      x-minipay-purpose: TRANSFER_PREPARE
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [receiverUserId, amountCent]
+              properties:
+                receiverUserId: {type: string, format: uuid}
+                amountCent: {type: integer, format: int64, minimum: 1, maximum: 1000000}
+                remark: {type: string, maxLength: 50}
+      responses:
+        '201': {description: Immutable transfer intent, content: {application/json: {schema: {$ref: '#/components/schemas/TransferIntent'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+        '422': {$ref: '#/components/responses/Problem'}
+  /internal/v1/agent/transfer-orders/{transferId}:
+    get:
+      operationId: agentGetTransferOrder
+      summary: Read the current user's authoritative transfer result for Agent writeback
+      security: [{delegatedBearer: [payment.agent.transfer.read]}]
+      x-minipay-audience: payment-internal
+      x-minipay-purpose: TRANSFER_QUERY
+      parameters:
+        - {name: transferId, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200': {description: Transfer result, content: {application/json: {schema: {$ref: '#/components/schemas/TransferOrder'}}}}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/v1/food-orders/{foodOrderId}/payment-order:
+    get:
+      operationId: getFoodPaymentOrder
+      summary: Resolve the Payment-owned order created from an authoritative Commerce event
+      security: [{minipayOAuth: [payment.order.read]}]
+      x-minipay-audience: consumer-api
+      parameters:
+        - {name: foodOrderId, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200': {description: Payment order, content: {application/json: {schema: {$ref: '#/components/schemas/PaymentOrder'}}}}
+        '404': {$ref: '#/components/responses/Problem'}
+components:
+  securitySchemes:
+    delegatedBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    minipayOAuth:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: http://localhost:8081/oauth2/authorize
+          tokenUrl: http://localhost:8081/oauth2/token
+          scopes:
+            payment.transfer.read: Read own transfer orders
+            payment.transfer.write: Create, confirm and cancel own transfers
+            payment.order.read: Read own payment orders
+            payment.order.write: Create and confirm own payment orders
+            payment.bank-card.read: Read own masked bank cards
+            payment.bank-card.write: Bind or disable own bank cards
+            payment.recharge.read: Read own recharge orders
+            payment.recharge.write: Recharge from a bound bank card
+            payment.withdrawal.read: Read own withdrawal orders
+            payment.withdrawal.write: Withdraw to a bound bank card
+            payment.collection-code.read: Read and resolve personal collection codes
+            merchant.portal.read: Read the current user's merchant onboarding and image previews
+            merchant.portal.write: Submit/resubmit onboarding, upload images and initialize the approved merchant
+            payment.refund.write: Create full sandbox refunds
+            payment.tool.invoke: Invoke trusted internal payment callbacks
+  parameters:
+    IdempotencyKey: {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 16, maxLength: 128}}
+    IntentId: {name: intentId, in: path, required: true, schema: {type: string, format: uuid}}
+    PaymentOrderId: {name: paymentOrderId, in: path, required: true, schema: {type: string, format: uuid}}
+    WithdrawalId: {name: withdrawalId, in: path, required: true, schema: {type: string, format: uuid}}
+    CardId: {name: cardId, in: path, required: true, schema: {type: string, format: uuid}}
+  schemas:
+    CreateTransferRequest:
+      type: object
+      additionalProperties: false
+      required: [receiverUserId, amountCent]
+      properties:
+        receiverUserId: {type: string, format: uuid}
+        amountCent: {type: integer, minimum: 1, maximum: 1000000}
+        remark: {type: string, maxLength: 50}
+        source: {type: string, default: FORM, enum: [FORM, AI, PERSONAL_COLLECTION_CODE]}
+    TransferIntent:
+      type: object
+      required: [intentId, amountCent, status, expiresAt]
+      properties:
+        intentId: {type: string, format: uuid}
+        amountCent: {type: integer}
+        status: {type: string, enum: [PENDING_CONFIRMATION, CONFIRMED, CANCELLED, EXPIRED]}
+        expiresAt: {type: string, format: date-time}
+    TransferOrder:
+      type: object
+      required: [transferId, intentId, amountCent, status, updatedAt]
+      properties:
+        transferId: {type: string, format: uuid}
+        intentId: {type: string, format: uuid}
+        amountCent: {type: integer}
+        status: {type: string, enum: [PROCESSING, SUCCEEDED, FAILED]}
+        failureCode: {type: string}
+        updatedAt: {type: string, format: date-time}
+    ConfirmRequest:
+      type: object
+      additionalProperties: false
+      required: [paymentAuthToken]
+      properties: {paymentAuthToken: {type: string, writeOnly: true}}
+    CreatePaymentOrderRequest:
+      type: object
+      additionalProperties: false
+      required: [amountCent, subject, paymentMethod]
+      properties:
+        amountCent: {type: integer, minimum: 1, maximum: 1000000}
+        subject: {type: string, maxLength: 256}
+        paymentMethod: {type: string, enum: [ALIPAY, WECHAT_PAY, WALLET_BALANCE]}
+    PaymentOrder:
+      type: object
+      required: [paymentOrderId, paymentOrderNo, amountCent, currency, subject, paymentMethod, status, expiresAt, updatedAt]
+      properties:
+        paymentOrderId: {type: string, format: uuid}
+        paymentOrderNo: {type: string}
+        amountCent: {type: integer}
+        currency: {type: string, const: CNY}
+        subject: {type: string}
+        paymentMethod: {type: string, enum: [ALIPAY, WECHAT_PAY, WALLET_BALANCE]}
+        status: {type: string, enum: [PROCESSING, SUCCEEDED, FAILED, CLOSED]}
+        redirectUrl: {type: string}
+        failureCode: {type: string}
+        expiresAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    BindBankCardRequest:
+      type: object
+      additionalProperties: false
+      required: [holderName, cardNumber, verificationCode]
+      properties:
+        holderName: {type: string, maxLength: 64}
+        cardNumber: {type: string, writeOnly: true, pattern: '^[0-9 ]{16,23}$'}
+        verificationCode: {type: string, writeOnly: true, pattern: '^\d{6}$'}
+    BankCard:
+      type: object
+      required: [cardId, bankName, cardType, maskedCardNo, status, verifiedAt]
+      properties:
+        cardId: {type: string, format: uuid}
+        bankName: {type: string}
+        cardType: {type: string, const: DEBIT}
+        maskedCardNo: {type: string}
+        status: {type: string, enum: [ACTIVE, DISABLED]}
+        verifiedAt: {type: string, format: date-time}
+    BankBalanceQueryRequest:
+      type: object
+      additionalProperties: false
+      required: [paymentAuthToken]
+      properties: {paymentAuthToken: {type: string, writeOnly: true}}
+    BankBalance:
+      type: object
+      additionalProperties: false
+      required: [cardId, availableAmountCent, currency, asOf, sandboxNotice]
+      properties:
+        cardId: {type: string, format: uuid}
+        availableAmountCent: {type: integer, minimum: 0}
+        currency: {type: string, const: CNY}
+        asOf: {type: string, format: date-time}
+        sandboxNotice: {type: string}
+    BankPaymentLimits:
+      type: object
+      additionalProperties: false
+      required: [cardId, singlePaymentLimitCent, dailyPaymentLimitCent, dailyUsedCent, dailyRemainingCent, currency, asOf]
+      properties:
+        cardId: {type: string, format: uuid}
+        singlePaymentLimitCent: {type: integer, minimum: 1}
+        dailyPaymentLimitCent: {type: integer, minimum: 1}
+        dailyUsedCent: {type: integer, minimum: 0}
+        dailyRemainingCent: {type: integer, minimum: 0}
+        currency: {type: string, const: CNY}
+        asOf: {type: string, format: date-time}
+    BankTransaction:
+      type: object
+      additionalProperties: false
+      required: [transactionId, transactionType, direction, description, amountCent, status, occurredAt]
+      properties:
+        transactionId: {type: string, format: uuid}
+        transactionType: {type: string}
+        direction: {type: string, enum: [INCOME, EXPENSE]}
+        description: {type: string}
+        amountCent: {type: integer, minimum: 1}
+        status: {type: string, enum: [SUCCEEDED, FAILED]}
+        occurredAt: {type: string, format: date-time}
+    BankTransactionPage:
+      type: object
+      additionalProperties: false
+      required: [items, page, size, total]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/BankTransaction'}}
+        page: {type: integer, minimum: 1}
+        size: {type: integer, minimum: 1, maximum: 100}
+        total: {type: integer, minimum: 0}
+    FundingRequest:
+      type: object
+      additionalProperties: false
+      required: [bankCardId, amountCent]
+      properties:
+        bankCardId: {type: string, format: uuid}
+        amountCent: {type: integer, minimum: 1, maximum: 1000000}
+    FundingOrderItem:
+      type: object
+      required: [applicationId, businessNo, bankCardId, bankName, maskedCardNo, amountCent, status, createdAt, updatedAt]
+      properties:
+        applicationId: {type: string, format: uuid}
+        businessNo: {type: string}
+        bankCardId: {type: string, format: uuid}
+        bankName: {type: string}
+        maskedCardNo: {type: string}
+        amountCent: {type: integer, minimum: 1}
+        status: {type: string, enum: [PENDING_CONFIRMATION, PROCESSING, SUCCEEDED, FAILED, CLOSED]}
+        failureCode: {type: string, nullable: true}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    FundingOrderPage:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/FundingOrderItem'}}
+        page: {type: integer, minimum: 1}
+        size: {type: integer, minimum: 1, maximum: 100}
+        total: {type: integer, minimum: 0}
+    RechargeOrder:
+      type: object
+      required: [rechargeId, rechargeNo, bankCardId, amountCent, channel, status, updatedAt]
+      properties:
+        rechargeId: {type: string, format: uuid}
+        rechargeNo: {type: string}
+        bankCardId: {type: string, format: uuid}
+        amountCent: {type: integer}
+        channel: {type: string, const: BANK_CARD}
+        status: {type: string, enum: [PROCESSING, SUCCEEDED, FAILED, CLOSED]}
+        failureCode: {type: string}
+        updatedAt: {type: string, format: date-time}
+    WithdrawalOrder:
+      type: object
+      required: [withdrawalId, withdrawalNo, bankCardId, amountCent, status, updatedAt]
+      properties:
+        withdrawalId: {type: string, format: uuid}
+        withdrawalNo: {type: string}
+        bankCardId: {type: string, format: uuid}
+        amountCent: {type: integer}
+        status: {type: string, enum: [PROCESSING, SUCCEEDED, FAILED]}
+        failureCode: {type: string}
+        updatedAt: {type: string, format: date-time}
+    PersonalCollectionCode:
+      type: object
+      required: [type, deepLink, expiresAt, sandboxNotice]
+      properties:
+        type: {type: string, const: PERSONAL_COLLECTION}
+        deepLink: {type: string}
+        expiresAt: {type: string, format: date-time}
+        sandboxNotice: {type: string}
+    MerchantOnboardingRequest:
+      type: object
+      additionalProperties: false
+      required: [merchantType, shopName, latitude, longitude, shopImages, contactName, contactMobile]
+      properties:
+        merchantType: {type: string, const: INDIVIDUAL, description: Fixed consumer merchant type; other legacy values are ignored by the service.}
+        shopName: {type: string, minLength: 2, maxLength: 64}
+        mccCode: {type: string, maxLength: 16}
+        address: {type: string, maxLength: 200}
+        latitude: {type: number, minimum: -90, maximum: 90}
+        longitude: {type: number, minimum: -180, maximum: 180}
+        shopImages: {type: string, minLength: 1, maxLength: 4000, description: One to five comma-separated private OSS object keys.}
+        contactName: {type: string, minLength: 2, maxLength: 64}
+        contactMobile: {type: string, pattern: '^1[3-9]\d{9}$'}
+        contactEmail: {type: string, format: email, maxLength: 254}
+        remark: {type: string, maxLength: 500}
+    MerchantOnboardingResubmitRequest:
+      type: object
+      additionalProperties: false
+      required: [version, merchantType, shopName, latitude, longitude, shopImages, contactName, contactMobile]
+      properties:
+        version: {type: integer, format: int64, minimum: 0}
+        merchantType: {type: string, const: INDIVIDUAL, description: Fixed consumer merchant type; other legacy values are ignored by the service.}
+        shopName: {type: string, minLength: 2, maxLength: 64}
+        mccCode: {type: string, maxLength: 16}
+        address: {type: string, maxLength: 200}
+        latitude: {type: number, minimum: -90, maximum: 90}
+        longitude: {type: number, minimum: -180, maximum: 180}
+        shopImages: {type: string, minLength: 1, maxLength: 4000, description: One to five comma-separated private OSS object keys.}
+        contactName: {type: string, minLength: 2, maxLength: 64}
+        contactMobile: {type: string, pattern: '^1[3-9]\d{9}$'}
+        contactEmail: {type: string, format: email, maxLength: 254}
+        remark: {type: string, maxLength: 500}
+    MerchantOnboarding:
+      type: object
+      required: [id, merchantType, shopName, contactName, contactMobile, applyStatus, applyTime, version]
+      properties:
+        id: {type: integer, format: int64}
+        merchantType: {type: string, const: INDIVIDUAL}
+        shopName: {type: string}
+        address: {type: string, nullable: true}
+        latitude: {type: number, nullable: true}
+        longitude: {type: number, nullable: true}
+        shopImages: {type: string, nullable: true}
+        contactName: {type: string}
+        contactMobile: {type: string}
+        applyStatus: {type: string, enum: [PENDING, APPROVED, REJECTED, SUPPLEMENT]}
+        rejectReason: {type: string, nullable: true}
+        resultantMerchantId: {type: string, format: uuid, nullable: true}
+        applyTime: {type: string, format: date-time}
+        version: {type: integer, format: int64, minimum: 0}
+    MerchantOnboardingPage:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/MerchantOnboarding'}}
+        page: {type: integer, minimum: 0}
+        size: {type: integer, minimum: 1, maximum: 100}
+        total: {type: integer, minimum: 0}
+    ScanResolutionRequest:
+      type: object
+      additionalProperties: false
+      required: [deepLink]
+      properties: {deepLink: {type: string, maxLength: 2048}}
+    ScanResolution:
+      type: object
+      required: [type, receiverUserId, receiverDisplay, receiverNickname]
+      properties:
+        type: {type: string, const: PERSONAL_COLLECTION}
+        receiverUserId: {type: string, format: uuid}
+        receiverDisplay: {type: string}
+        receiverNickname: {type: string}
+        receiverAvatarUrl: {type: string, format: uri, nullable: true}
+        receiverLegalNameMasked: {type: string, nullable: true}
+    MerchantCollectionResolution:
+      type: object
+      required: [type, resolutionId, merchantId, merchantName, appId, allowedChannels, expiresAt]
+      properties:
+        type: {type: string, const: MERCHANT_COLLECTION}
+        resolutionId: {type: string, format: uuid}
+        merchantId: {type: string}
+        merchantName: {type: string}
+        appId: {type: string}
+        allowedChannels:
+          type: array
+          items: {type: string}
+        expiresAt: {type: string, format: date-time}
+    CreateRefundRequest:
+      type: object
+      required: [paymentOrderId, amountCent]
+      properties:
+        paymentOrderId: {type: string, format: uuid}
+        amountCent: {type: integer, minimum: 1}
+        reason: {type: string, maxLength: 256}
+    Refund:
+      type: object
+      required: [refundId, paymentOrderId, amountCent, status]
+      properties:
+        refundId: {type: string, format: uuid}
+        paymentOrderId: {type: string, format: uuid}
+        amountCent: {type: integer}
+        status: {type: string, enum: [PROCESSING, SUCCEEDED, FAILED]}
+        failureCode: {type: string}
+        updatedAt: {type: string, format: date-time}
+    Problem: {$ref: './components/problem-details-v1.yaml#/components/schemas/ProblemDetails'}
+  responses:
+    Problem: {description: Problem Details, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}

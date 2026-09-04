@@ -1,0 +1,2 @@
+ALTER TABLE user_profile
+  ADD COLUMN credential_type VARCHAR(32) NOT NULL DEFAULT 'PASSWORD' AFTER status;

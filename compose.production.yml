@@ -1,0 +1,170 @@
+services:
+  mysql:
+    ports: !override
+      - target: 3306
+        published: "${MYSQL_HOST_PORT:-13306}"
+        host_ip: 127.0.0.1
+
+  redis:
+    ports: !override
+      - target: 6379
+        published: "${REDIS_HOST_PORT:-16379}"
+        host_ip: 127.0.0.1
+
+  rabbitmq:
+    ports: !override
+      - target: 5672
+        published: "${RABBITMQ_HOST_PORT:-5672}"
+        host_ip: 127.0.0.1
+      - target: 15672
+        published: "${RABBITMQ_MGMT_HOST_PORT:-15672}"
+        host_ip: 127.0.0.1
+
+  seata-server:
+    ports: !override
+      - target: 7091
+        published: "${SEATA_CONSOLE_HOST_PORT:-7091}"
+        host_ip: 127.0.0.1
+      - target: 8091
+        published: "${SEATA_SERVICE_HOST_PORT:-8091}"
+        host_ip: 127.0.0.1
+    environment:
+      JAVA_OPT: "-Xms256m -Xmx512m -Xss512k -XX:MaxMetaspaceSize=192m -XX:MaxDirectMemorySize=256m"
+    mem_limit: 768m
+    pids_limit: 256
+
+  identity-service:
+    ports: !override
+      - target: 8080
+        published: "${IDENTITY_HOST_PORT:-8081}"
+        host_ip: 127.0.0.1
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      IDENTITY_ISSUER: ${IDENTITY_PUBLIC_URL:?IDENTITY_PUBLIC_URL is required}
+      MANAGEMENT_OAUTH_REDIRECT_URI: ${MANAGEMENT_PUBLIC_URL:?MANAGEMENT_PUBLIC_URL is required}/login/oauth2/code/minipay-ops
+      OPS_WEB_PUBLIC_URL: ${MANAGEMENT_PUBLIC_URL}/
+      ADMIN_OAUTH_REDIRECT_URI: ${ADMIN_PUBLIC_URL:?ADMIN_PUBLIC_URL is required}/login/oauth2/code/minipay-admin
+      ADMIN_WEB_PUBLIC_URL: ${ADMIN_PUBLIC_URL}/
+      MERCHANT_WEB_PUBLIC_URL: ${MERCHANT_PUBLIC_URL:?MERCHANT_PUBLIC_URL is required}/
+      MERCHANT_BFF_OAUTH_REDIRECT_URI: ${MERCHANT_PUBLIC_URL}/merchant/oauth2/code
+      SERVER_SERVLET_SESSION_COOKIE_NAME: __Host-minipay-identity
+      SERVER_SERVLET_SESSION_COOKIE_SECURE: "true"
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70 -XX:InitialRAMPercentage=15 -XX:MaxMetaspaceSize=192m -XX:MaxDirectMemorySize=128m -Xss512k"
+    mem_limit: 640m
+    pids_limit: 256
+
+  payment-service:
+    ports: !override
+      - target: 8080
+        published: "${PAYMENT_HOST_PORT:-8082}"
+        host_ip: 127.0.0.1
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70 -XX:InitialRAMPercentage=15 -XX:MaxMetaspaceSize=192m -XX:MaxDirectMemorySize=128m -Xss512k"
+    volumes:
+      - ${JWT_SIGNING_PRIVATE_KEY_FILE:?JWT_SIGNING_PRIVATE_KEY_FILE is required}:/run/secrets/jwt-private.pem:ro
+      - ${JWT_SIGNING_PUBLIC_KEY_FILE:?JWT_SIGNING_PUBLIC_KEY_FILE is required}:/run/secrets/jwt-public.pem:ro
+    mem_limit: 640m
+    pids_limit: 256
+
+  wallet-service:
+    ports: !override
+      - target: 8080
+        published: "${WALLET_HOST_PORT:-8083}"
+        host_ip: 127.0.0.1
+    environment:
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70 -XX:InitialRAMPercentage=15 -XX:MaxMetaspaceSize=160m -XX:MaxDirectMemorySize=96m -Xss512k"
+    mem_limit: 512m
+    pids_limit: 192
+
+  commerce-service:
+    ports: !override
+      - target: 8085
+        published: "${COMMERCE_HOST_PORT:-8085}"
+        host_ip: 127.0.0.1
+    environment:
+      MINIPAY_FOOD_H5_ORIGIN: ${FOOD_PUBLIC_ORIGIN:?FOOD_PUBLIC_ORIGIN is required}
+      YSHOP_INTERNAL_URL: http://yshop-server:48080
+      YSHOP_MINIPAY_HMAC_SECRET: ${YSHOP_MINIPAY_HMAC_SECRET:?YSHOP_MINIPAY_HMAC_SECRET is required}
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70 -XX:InitialRAMPercentage=15 -XX:MaxMetaspaceSize=160m -XX:MaxDirectMemorySize=96m -Xss512k"
+    mem_limit: 448m
+    pids_limit: 192
+
+  agent-service:
+    ports: !override
+      - target: 8080
+        published: "${AGENT_HOST_PORT:-8086}"
+        host_ip: 127.0.0.1
+    environment:
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70 -XX:InitialRAMPercentage=15 -XX:MaxMetaspaceSize=160m -XX:MaxDirectMemorySize=96m -Xss512k"
+    mem_limit: 448m
+    pids_limit: 192
+
+  consumer-bff:
+    ports: !override
+      - target: 8080
+        published: "${CONSUMER_BFF_HOST_PORT:-8087}"
+        host_ip: 127.0.0.1
+    environment:
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70 -XX:InitialRAMPercentage=15 -XX:MaxMetaspaceSize=160m -XX:MaxDirectMemorySize=96m -Xss512k"
+    mem_limit: 448m
+    pids_limit: 192
+
+  management-bff:
+    ports: !override
+      - target: 8080
+        published: "${MANAGEMENT_BFF_HOST_PORT:-8088}"
+        host_ip: 127.0.0.1
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      IDENTITY_PUBLIC_URL: ${IDENTITY_PUBLIC_URL}
+      MANAGEMENT_OAUTH_REDIRECT_URI: ${MANAGEMENT_PUBLIC_URL}/login/oauth2/code/minipay-ops
+      OPS_WEB_PUBLIC_URL: ${MANAGEMENT_PUBLIC_URL}/
+      MERCHANT_WEB_PUBLIC_URL: ${MERCHANT_PUBLIC_URL}/
+      MERCHANT_BFF_OAUTH_REDIRECT_URI: ${MERCHANT_PUBLIC_URL}/merchant/oauth2/code
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70 -XX:InitialRAMPercentage=15 -XX:MaxMetaspaceSize=192m -XX:MaxDirectMemorySize=128m -Xss512k"
+    mem_limit: 640m
+    pids_limit: 256
+
+  admin-bff:
+    ports: !override
+      - target: 8080
+        published: "${ADMIN_BFF_HOST_PORT:-8089}"
+        host_ip: 127.0.0.1
+    environment:
+      IDENTITY_PUBLIC_URL: ${IDENTITY_PUBLIC_URL}
+      ADMIN_OAUTH_REDIRECT_URI: ${ADMIN_PUBLIC_URL}/login/oauth2/code/minipay-admin
+      ADMIN_WEB_PUBLIC_URL: ${ADMIN_PUBLIC_URL}/
+      SPRING_SESSION_COOKIE_NAME: __Host-minipay-admin
+      SESSION_COOKIE_SECURE: "true"
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70 -XX:InitialRAMPercentage=15 -XX:MaxMetaspaceSize=192m -XX:MaxDirectMemorySize=128m -Xss512k"
+    mem_limit: 512m
+    pids_limit: 192
+
+  callback-mock:
+    profiles: [development-only]
+
+  callback-receiver:
+    build:
+      context: ./deploy/callback-receiver
+    restart: unless-stopped
+    ports:
+      - target: 8099
+        published: "${CALLBACK_RECEIVER_HOST_PORT:-8099}"
+        host_ip: 127.0.0.1
+    environment:
+      PORT: "8099"
+      DATA_DIR: /data
+      ADMIN_TOKEN: ${CALLBACK_ADMIN_TOKEN:?CALLBACK_ADMIN_TOKEN is required}
+    volumes:
+      - callback-data:/data
+    mem_limit: 128m
+    pids_limit: 64
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8099/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  callback-data:

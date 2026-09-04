@@ -1,0 +1,25 @@
+openapi: 3.1.0
+info:
+  title: MiniPay Shared Problem Details
+  version: 1.0.0
+  x-minipay-stable-codes:
+    - REAL_NAME_VERIFICATION_REQUIRED
+    - REAL_NAME_VERIFICATION_PROCESSING
+    - PAYMENT_PASSWORD_REQUIRED
+    - ANNUAL_OUTFLOW_LIMIT_EXCEEDED
+    - ACTIVE_BANK_CARD_REQUIRED
+    - PAYMENT_AUTHORIZATION_INVALID
+paths: {}
+components:
+  schemas:
+    ProblemDetails:
+      type: object
+      required: [type, title, status, code, requestId]
+      properties:
+        type: {type: string, format: uri}
+        title: {type: string}
+        status: {type: integer, minimum: 400, maximum: 599}
+        code: {type: string}
+        requestId: {type: string, maxLength: 128}
+        detail: {type: string}
+        instance: {type: string, format: uri-reference}

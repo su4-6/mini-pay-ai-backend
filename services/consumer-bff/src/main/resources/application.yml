@@ -1,0 +1,34 @@
+server:
+  port: ${SERVER_PORT:8087}
+  shutdown: graceful
+  reactive:
+    session:
+      cookie:
+        name: ${SPRING_SESSION_COOKIE_NAME:__Host-minipay-consumer}
+        http-only: true
+        secure: ${SESSION_COOKIE_SECURE:true}
+        same-site: lax
+        path: /
+
+spring:
+  application:
+    name: consumer-bff
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  session:
+    redis:
+      namespace: minipay:session:consumer
+      flush-mode: on_save
+
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus

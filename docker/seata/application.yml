@@ -1,0 +1,51 @@
+# 基于 apache/seata-server:2.6.0 镜像内置 application.yml 定制。
+# 注意：此文件整体替换镜像内同名文件，必须保留镜像默认项（web-application-type、logging.file.path 等），
+# 否则 seata-server 启动失败（MissingWebServerFactoryBeanException / placeholder 解析失败）。
+server:
+  port: 7091
+
+spring:
+  application:
+    name: seata-server
+  main:
+    web-application-type: none
+
+logging:
+  config: classpath:logback-spring.xml
+  file:
+    path: ${log.home:${user.home}/logs/seata}
+
+console:
+  user:
+    username: ${SEATA_CONSOLE_USERNAME:seata}
+    password: ${SEATA_CONSOLE_PASSWORD:seata}
+
+seata:
+  config:
+    type: file
+  registry:
+    type: file
+  store:
+    mode: db
+    db:
+      datasource: druid
+      db-type: mysql
+      driver-class-name: com.mysql.cj.jdbc.Driver
+      url: jdbc:mysql://${MYSQL_HOST:mysql}:3306/seata?useUnicode=true&rewriteBatchedStatements=true&serverTimezone=Asia/Shanghai
+      user: seata
+      password: ${SEATA_DB_PASSWORD:123456}
+      min-conn: 5
+      max-conn: 30
+      global-table: global_table
+      branch-table: branch_table
+      lock-table: lock_table
+      distributed-lock-table: distributed_lock
+      query-limit: 100
+      max-wait: 5000
+  server:
+    service-port: 8091
+  security:
+    secretKey: ${SEATA_SECRET_KEY:MiniPayDemoSecretKeyMustBeChangedInProduction}
+    tokenValidityInMilliseconds: 1800000
+    ignore:
+      urls: /,/**/*.css,/**/*.js,/**/*.html,/**/*.map,/**/*.svg,/**/*.png,/favicon.ico,/console-fe/public/**,/api/v1/auth/login

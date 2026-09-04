@@ -1,0 +1,409 @@
+name: minipay
+
+x-app-defaults: &app-defaults
+  restart: unless-stopped
+  profiles: [apps]
+  depends_on:
+    redis:
+      condition: service_healthy
+    rabbitmq:
+      condition: service_healthy
+    seata-server:
+      condition: service_healthy
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  healthcheck:
+    test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health/readiness"]
+    interval: 10s
+    timeout: 5s
+    retries: 12
+    start_period: 30s
+
+x-common-app-environment: &common-app-environment
+  SPRING_PROFILES_ACTIVE: docker
+  # All app containers listen on 8080 inside the container; host port mapping and
+  # healthcheck assume this. Individual services override with their own defaults
+  # via application.yml when run on the host (IDEA), so pin it here.
+  SERVER_PORT: "8080"
+  MYSQL_USERNAME: ${MYSQL_USERNAME:-root}
+  MYSQL_PASSWORD: ${MYSQL_PASSWORD:-}
+  REDIS_HOST: redis
+  RABBITMQ_HOST: rabbitmq
+  RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-minipay}
+  RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-minipay}
+  SEATA_ENABLED: "true"
+  SEATA_SERVER_ADDR: seata-server:8091
+  IDENTITY_ISSUER: http://localhost:8081
+  OIDC_JWK_SET_URI: http://identity-service:8080/oauth2/jwks
+  IDENTITY_INTERNAL_URL: http://identity-service:8080
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_PASSWORD:-minipay}
+      SEATA_DB_PASSWORD: ${SEATA_DB_PASSWORD:-seata}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./docker/init-local-mysql.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+      - ./docker/init-local-seata-user.sh:/docker-entrypoint-initdb.d/02-init-seata-user.sh:ro
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          MYSQL_PWD="$${MYSQL_ROOT_PASSWORD}" mysqladmin ping -h localhost -uroot --silent
+          && MYSQL_PWD="$${SEATA_DB_PASSWORD}" mysql -h localhost -useata seata
+          --silent --skip-column-names --execute='SELECT 1' >/dev/null
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:4.1-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USERNAME:-minipay}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-minipay}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  coturn:
+    image: coturn/coturn:4.6.3-alpine
+    profiles: [voice-local]
+    restart: unless-stopped
+    command:
+      - --no-cli
+      - --fingerprint
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SHARED_SECRET:-minipay-local-turn-secret-change-me}
+      - --realm=${TURN_REALM:-minipay.local}
+      - --min-port=49160
+      - --max-port=49200
+    ports:
+      - "127.0.0.1:3478:3478/tcp"
+      - "127.0.0.1:3478:3478/udp"
+      - "127.0.0.1:49160-49200:49160-49200/udp"
+
+  seata-server:
+    image: apache/seata-server:2.6.0
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "7091:7091"
+      - "8091:8091"
+    environment:
+      SEATA_IP: seata-server
+      SEATA_PORT: "8091"
+      STORE_MODE: db
+      SEATA_DB_PASSWORD: ${SEATA_DB_PASSWORD:-seata}
+      SEATA_CONSOLE_USERNAME: ${SEATA_CONSOLE_USERNAME:-seata}
+      SEATA_CONSOLE_PASSWORD: ${SEATA_CONSOLE_PASSWORD:-seata}
+      SEATA_SECRET_KEY: ${SEATA_SECRET_KEY:-MiniPayDemoSecretKeyMustBeChangedInProduction}
+    volumes:
+      - ./docker/seata/application.yml:/seata-server/resources/application.yml:ro
+    healthcheck:
+      # seata-server 2.6.0 镜像以 web-application-type: none 运行（无 actuator web）。
+      # 同时探测事务库和 RPC 端口，避免存储不可用时被误判为健康。
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/$${MYSQL_HOST:-mysql}/3306 && exec 4<>/dev/tcp/127.0.0.1/8091' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  identity-service:
+    <<: *app-defaults
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    build:
+      context: .
+      dockerfile: docker/service-runtime.Dockerfile
+      args:
+        MODULE: services/identity-service
+    ports:
+      - "8081:8080"
+    environment:
+      <<: *common-app-environment
+      SPRING_PROFILES_ACTIVE: docker,demo-auth
+      MYSQL_URL: jdbc:mysql://mysql:3306/minipay_identity
+      IDENTITY_ISSUER: http://localhost:8081
+      MANAGEMENT_OAUTH_CLIENT_ID: minipay-management-bff
+      MANAGEMENT_OAUTH_CLIENT_SECRET: ${MANAGEMENT_OAUTH_CLIENT_SECRET:-minipay-management-demo-secret}
+      MANAGEMENT_OAUTH_REDIRECT_URI: http://localhost:8088/login/oauth2/code/minipay-ops
+      OPS_WEB_PUBLIC_URL: http://localhost:8000/
+      ADMIN_OAUTH_CLIENT_ID: minipay-admin-bff
+      ADMIN_OAUTH_CLIENT_SECRET: ${ADMIN_OAUTH_CLIENT_SECRET:-minipay-admin-demo-secret}
+      ADMIN_OAUTH_REDIRECT_URI: http://localhost:8089/login/oauth2/code/minipay-admin
+      ADMIN_WEB_PUBLIC_URL: http://localhost:8002/
+      BOOTSTRAP_SYSTEM_ADMIN_MOBILE: ${BOOTSTRAP_SYSTEM_ADMIN_MOBILE:-}
+      BOOTSTRAP_SYSTEM_ADMIN_DISPLAY_NAME: ${BOOTSTRAP_SYSTEM_ADMIN_DISPLAY_NAME:-系统超级管理员}
+      PHONE_HASH_PEPPER: ${PHONE_HASH_PEPPER:-minipay-demo-phone-pepper-change-me}
+      PHONE_DISCLOSURE_ENCRYPTION_KEY: ${PHONE_DISCLOSURE_ENCRYPTION_KEY:-minipay-demo-phone-disclosure-key-change-me}
+      PHONE_DISCLOSURE_KEY_ID: ${PHONE_DISCLOSURE_KEY_ID:-v1}
+      TOKEN_DIGEST_PEPPER: ${TOKEN_DIGEST_PEPPER:-minipay-demo-token-pepper-change-me}
+      REAL_NAME_PROVIDER: ${REAL_NAME_PROVIDER:-sandbox}
+      REAL_NAME_HMAC_KEY: ${REAL_NAME_HMAC_KEY:-minipay-demo-real-name-hmac-key-change-me}
+      AUTH_AUDIT_PEPPER: ${AUTH_AUDIT_PEPPER:-minipay-demo-audit-pepper-change-me}
+      CAPTCHA_PEPPER: ${CAPTCHA_PEPPER:-minipay-demo-captcha-pepper-change-me}
+      SMS_PROVIDER: ${SMS_PROVIDER:-demo}
+      DEMO_SMS_CODE: ${DEMO_SMS_CODE:-123456}
+      PAYMENT_TO_IDENTITY_CLIENT_SECRET: ${PAYMENT_TO_IDENTITY_CLIENT_SECRET:-minipay-payment-identity-demo-secret}
+      PAYMENT_TO_WALLET_CLIENT_SECRET: ${PAYMENT_TO_WALLET_CLIENT_SECRET:-minipay-payment-wallet-demo-secret}
+      AGENT_TO_PAYMENT_CLIENT_SECRET: ${AGENT_TO_PAYMENT_CLIENT_SECRET:-minipay-agent-payment-demo-secret}
+      IDENTITY_TO_PAYMENT_CLIENT_SECRET: ${IDENTITY_TO_PAYMENT_CLIENT_SECRET:-minipay-identity-payment-demo-secret}
+      AGENT_DELEGATION_CLIENT_ID: ${AGENT_DELEGATION_CLIENT_ID:-minipay-agent-service}
+      AGENT_DELEGATION_CLIENT_SECRET: ${AGENT_DELEGATION_CLIENT_SECRET:-minipay-agent-delegation-demo-secret}
+      COMMERCE_TO_IDENTITY_CLIENT_SECRET: ${COMMERCE_TO_IDENTITY_CLIENT_SECRET:-minipay-commerce-identity-demo-secret}
+      OBJECT_STORAGE_PROVIDER: ${OBJECT_STORAGE_PROVIDER:-disabled}
+      ALIYUN_OSS_ENDPOINT: ${ALIYUN_OSS_ENDPOINT:-}
+      ALIYUN_OSS_REGION: ${ALIYUN_OSS_REGION:-}
+      ALIYUN_OSS_BUCKET: ${ALIYUN_OSS_BUCKET:-}
+      ALIYUN_OSS_ACCESS_KEY_ID: ${ALIYUN_OSS_ACCESS_KEY_ID:-${ALIBABA_CLOUD_ACCESS_KEY_ID:-}}
+      ALIYUN_OSS_ACCESS_KEY_SECRET: ${ALIYUN_OSS_ACCESS_KEY_SECRET:-${ALIBABA_CLOUD_ACCESS_KEY_SECRET:-}}
+      ALIYUN_OSS_SECURITY_TOKEN: ${ALIYUN_OSS_SECURITY_TOKEN:-${ALIBABA_CLOUD_SECURITY_TOKEN:-}}
+
+  payment-service:
+    <<: *app-defaults
+    build:
+      context: .
+      dockerfile: docker/service-runtime.Dockerfile
+      args:
+        MODULE: services/payment-service
+    ports:
+      - "8082:8080"
+    environment:
+      <<: *common-app-environment
+      SPRING_PROFILES_ACTIVE: docker,demo-data
+      MYSQL_URL: jdbc:mysql://mysql:3306/minipay_payment
+      PAYMENT_MYSQL_USERNAME: ${MYSQL_USERNAME:-root}
+      PAYMENT_MYSQL_PASSWORD: ${MYSQL_PASSWORD:-minipay}
+      PAYMENT_IDENTITY_CLIENT_ID: minipay-payment-to-identity
+      PAYMENT_IDENTITY_CLIENT_SECRET: ${PAYMENT_TO_IDENTITY_CLIENT_SECRET:-minipay-payment-identity-demo-secret}
+      PAYMENT_WALLET_CLIENT_ID: minipay-payment-to-wallet
+      PAYMENT_WALLET_CLIENT_SECRET: ${PAYMENT_TO_WALLET_CLIENT_SECRET:-minipay-payment-wallet-demo-secret}
+      WALLET_BASE_URL: http://wallet-service:8080
+      MERCHANT_APP_SECRET_KEY: ${MERCHANT_APP_SECRET_KEY:-AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=}
+      COLLECTION_CODE_SIGNING_KEY: ${COLLECTION_CODE_SIGNING_KEY:-local-collection-code-signing-key-change-me}
+      OBJECT_STORAGE_PROVIDER: ${OBJECT_STORAGE_PROVIDER:-disabled}
+      ALIYUN_OSS_ENDPOINT: ${ALIYUN_OSS_ENDPOINT:-}
+      ALIYUN_OSS_REGION: ${ALIYUN_OSS_REGION:-}
+      ALIYUN_OSS_BUCKET: ${ALIYUN_OSS_BUCKET:-}
+      ALIYUN_OSS_ACCESS_KEY_ID: ${ALIYUN_OSS_ACCESS_KEY_ID:-${ALIBABA_CLOUD_ACCESS_KEY_ID:-}}
+      ALIYUN_OSS_ACCESS_KEY_SECRET: ${ALIYUN_OSS_ACCESS_KEY_SECRET:-${ALIBABA_CLOUD_ACCESS_KEY_SECRET:-}}
+      ALIYUN_OSS_SECURITY_TOKEN: ${ALIYUN_OSS_SECURITY_TOKEN:-${ALIBABA_CLOUD_SECURITY_TOKEN:-}}
+      BANK_SANDBOX_TOKENIZATION_KEY: ${BANK_SANDBOX_TOKENIZATION_KEY:-local-bank-tokenization-key-change-me-32}
+      BANK_SANDBOX_INITIAL_BALANCE_CENT: ${BANK_SANDBOX_INITIAL_BALANCE_CENT:-10000000}
+      BANK_SANDBOX_SINGLE_PAYMENT_LIMIT_CENT: ${BANK_SANDBOX_SINGLE_PAYMENT_LIMIT_CENT:-1000000}
+      BANK_SANDBOX_DAILY_PAYMENT_LIMIT_CENT: ${BANK_SANDBOX_DAILY_PAYMENT_LIMIT_CENT:-5000000}
+      FOOD_PLATFORM_MERCHANT_APP_ID: ${FOOD_PLATFORM_MERCHANT_APP_ID:-app_demo_starry}
+
+  callback-mock:
+    build:
+      context: ./docker/callback-mock
+    ports:
+      - "8098:8098"
+    environment:
+      PORT: 8098
+    healthcheck:
+      # Alpine wget resolves localhost to IPv6 first while the mock deliberately
+      # binds IPv4 for Docker network callbacks; use the explicit loopback.
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8098/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # 正式 yshop 外卖防腐层；yshop 可在宿主机单独启动。
+  commerce-service:
+    <<: *app-defaults
+    build:
+      context: .
+      dockerfile: docker/service.Dockerfile
+      args:
+        MODULE: services/commerce-service
+    ports:
+      - "8085:8085"
+    environment:
+      <<: *common-app-environment
+      SERVER_PORT: "8085"
+      MYSQL_URL: jdbc:mysql://mysql:3306/minipay_commerce
+      MINIPAY_FOOD_PROVIDER: ${MINIPAY_FOOD_PROVIDER:-yshop}
+      MINIPAY_FOOD_H5_ORIGIN: ${MINIPAY_FOOD_H5_ORIGIN:-http://127.0.0.1:4173}
+      YSHOP_INTERNAL_URL: ${YSHOP_INTERNAL_URL:-http://host.docker.internal:48081}
+      YSHOP_MINIPAY_HMAC_SECRET: ${YSHOP_MINIPAY_HMAC_SECRET:-minipay-yshop-local-hmac-secret-change-me}
+      COMMERCE_TO_IDENTITY_CLIENT_ID: ${COMMERCE_TO_IDENTITY_CLIENT_ID:-minipay-commerce-to-identity}
+      COMMERCE_TO_IDENTITY_CLIENT_SECRET: ${COMMERCE_TO_IDENTITY_CLIENT_SECRET:-minipay-commerce-identity-demo-secret}
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8085/actuator/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  wallet-service:
+    <<: *app-defaults
+    depends_on:
+      redis:
+        condition: service_healthy
+      seata-server:
+        condition: service_healthy
+    build:
+      context: .
+      dockerfile: docker/service-runtime.Dockerfile
+      args:
+        MODULE: services/wallet-service
+    ports:
+      - "8083:8080"
+    environment:
+      <<: *common-app-environment
+      MYSQL_URL: jdbc:mysql://mysql:3306/minipay_wallet
+      WALLET_MYSQL_USERNAME: ${MYSQL_USERNAME:-root}
+      WALLET_MYSQL_PASSWORD: ${MYSQL_PASSWORD:-}
+      WALLET_PARTITION_ID: PRIMARY
+
+  agent-service:
+    <<: *app-defaults
+    build:
+      context: .
+      dockerfile: docker/service-runtime.Dockerfile
+      args:
+        MODULE: services/agent-service
+    ports:
+      - "8086:8080"
+    environment:
+      <<: *common-app-environment
+      MYSQL_URL: jdbc:mysql://mysql:3306/minipay_agent
+      MODEL_ENABLED: ${MODEL_ENABLED:-false}
+      MODEL_CHAT_MODE: ${MODEL_CHAT_MODE:-none}
+      MODEL_BASE_URL: ${MODEL_BASE_URL:-https://api.deepseek.com}
+      MODEL_NAME: ${MODEL_NAME:-deepseek-v4-flash}
+      MODEL_MAX_TOKENS: ${MODEL_MAX_TOKENS:-2048}
+      MODEL_THINKING_ENABLED: ${MODEL_THINKING_ENABLED:-false}
+      MODEL_REQUEST_TIMEOUT: ${MODEL_REQUEST_TIMEOUT:-120s}
+      MODEL_API_KEY: ${MODEL_API_KEY:-}
+      AGENT_MAX_CONCURRENT_RUNS_PER_USER: ${AGENT_MAX_CONCURRENT_RUNS_PER_USER:-3}
+      AGENT_MAX_CONCURRENT_MODEL_CALLS: ${AGENT_MAX_CONCURRENT_MODEL_CALLS:-32}
+      AGENT_RUN_STALE_TIMEOUT: ${AGENT_RUN_STALE_TIMEOUT:-3m}
+      IDENTITY_TOKEN_URL: http://identity-service:8080/oauth2/token
+      WALLET_INTERNAL_URL: http://wallet-service:8080
+      PAYMENT_INTERNAL_URL: http://payment-service:8080
+      COMMERCE_INTERNAL_URL: http://commerce-service:8085
+      AGENT_DELEGATION_CLIENT_ID: ${AGENT_DELEGATION_CLIENT_ID:-minipay-agent-service}
+      AGENT_DELEGATION_CLIENT_SECRET: ${AGENT_DELEGATION_CLIENT_SECRET:-minipay-agent-delegation-demo-secret}
+      OBJECT_STORAGE_PROVIDER: ${OBJECT_STORAGE_PROVIDER:-disabled}
+      ALIYUN_OSS_ENDPOINT: ${ALIYUN_OSS_ENDPOINT:-}
+      ALIYUN_OSS_REGION: ${ALIYUN_OSS_REGION:-}
+      ALIYUN_OSS_BUCKET: ${ALIYUN_OSS_BUCKET:-}
+      ALIYUN_OSS_ACCESS_KEY_ID: ${ALIYUN_OSS_ACCESS_KEY_ID:-${ALIBABA_CLOUD_ACCESS_KEY_ID:-}}
+      ALIYUN_OSS_ACCESS_KEY_SECRET: ${ALIYUN_OSS_ACCESS_KEY_SECRET:-${ALIBABA_CLOUD_ACCESS_KEY_SECRET:-}}
+      ALIYUN_OSS_SECURITY_TOKEN: ${ALIYUN_OSS_SECURITY_TOKEN:-${ALIBABA_CLOUD_SECURITY_TOKEN:-}}
+      TURN_URLS: ${TURN_URLS:-stun:stun.l.google.com:19302}
+      TURN_SHARED_SECRET: ${TURN_SHARED_SECRET:-minipay-local-turn-secret-change-me}
+
+  consumer-bff:
+    <<: *app-defaults
+    build:
+      context: .
+      dockerfile: docker/service-runtime.Dockerfile
+      args:
+        MODULE: services/consumer-bff
+    ports:
+      - "8087:8080"
+    environment:
+      <<: *common-app-environment
+      SPRING_SESSION_COOKIE_NAME: __Host-minipay-consumer
+      SESSION_COOKIE_SECURE: "true"
+
+  management-bff:
+    <<: *app-defaults
+    depends_on:
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    build:
+      context: .
+      dockerfile: docker/service-runtime.Dockerfile
+      args:
+        MODULE: services/management-bff
+    ports:
+      - "8088:8080"
+    environment:
+      <<: *common-app-environment
+      SPRING_PROFILES_ACTIVE: docker,demo-auth
+      IDENTITY_PUBLIC_URL: http://localhost:8081
+      IDENTITY_INTERNAL_URL: http://identity-service:8080
+      PAYMENT_INTERNAL_URL: http://payment-service:8080
+      OUTBOUND_HTTPS_PROXY: ${OUTBOUND_HTTPS_PROXY:-}
+      WALLET_INTERNAL_URL: http://wallet-service:8080
+      COMMERCE_INTERNAL_URL: http://commerce-service:8085
+      MANAGEMENT_OAUTH_CLIENT_ID: minipay-management-bff
+      MANAGEMENT_OAUTH_CLIENT_SECRET: ${MANAGEMENT_OAUTH_CLIENT_SECRET:-minipay-management-demo-secret}
+      MANAGEMENT_OAUTH_REDIRECT_URI: http://localhost:8088/login/oauth2/code/minipay-ops
+      OPS_WEB_PUBLIC_URL: http://localhost:8000/
+
+  admin-bff:
+    <<: *app-defaults
+    depends_on:
+      redis:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+    build:
+      context: .
+      dockerfile: docker/service-runtime.Dockerfile
+      args:
+        MODULE: services/admin-bff
+    ports:
+      - "8089:8080"
+    environment:
+      <<: *common-app-environment
+      IDENTITY_PUBLIC_URL: http://localhost:8081
+      IDENTITY_INTERNAL_URL: http://identity-service:8080
+      PAYMENT_INTERNAL_URL: http://payment-service:8080
+      WALLET_INTERNAL_URL: http://wallet-service:8080
+      COMMERCE_INTERNAL_URL: http://commerce-service:8085
+      ADMIN_OAUTH_CLIENT_ID: minipay-admin-bff
+      ADMIN_OAUTH_CLIENT_SECRET: ${ADMIN_OAUTH_CLIENT_SECRET:-minipay-admin-demo-secret}
+      ADMIN_OAUTH_REDIRECT_URI: http://localhost:8089/login/oauth2/code/minipay-admin
+      ADMIN_WEB_PUBLIC_URL: http://localhost:8002/
+      # Local development uses plain HTTP. Browsers reject __Host- cookies
+      # unless they also carry Secure, which loses the OAuth state/PKCE session
+      # before the callback and redirects admin-web to login?error=1.
+      SPRING_SESSION_COOKIE_NAME: minipay-admin-demo
+      SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
+
+volumes:
+  mysql-data:
+  redis-data:
+  rabbitmq-data:

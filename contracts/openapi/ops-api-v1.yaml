@@ -1,0 +1,590 @@
+openapi: 3.1.0
+info:
+  title: MiniPay Operations API
+  version: 1.0.0
+  description: Operations dashboard and merchant management. This API is not a merchant-tenant API.
+servers:
+  - url: http://localhost:8088
+paths:
+  /api/v1/ops/dashboard:
+    get:
+      operationId: getOpsDashboard
+      security: [{minipayOAuth: [ops.dashboard.read]}]
+      x-minipay-audience: management-api
+      parameters:
+        - name: range
+          in: query
+          schema: {type: string, enum: [7d, 30d], default: 7d}
+      responses:
+        '200': {description: Platform dashboard, content: {application/json: {schema: {$ref: '#/components/schemas/OpsDashboard'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+  /api/v1/ops/merchants:
+    get:
+      operationId: listOpsMerchants
+      security: [{minipayOAuth: [ops.merchant.read]}]
+      x-minipay-audience: management-api
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Size'}
+        - {name: name, in: query, schema: {type: string, maxLength: 64}}
+        - {name: contactMobile, in: query, schema: {type: string, maxLength: 11}}
+        - {name: status, in: query, schema: {$ref: '#/components/schemas/MerchantStatus'}}
+      responses:
+        '200': {description: Merchant page, content: {application/json: {schema: {$ref: '#/components/schemas/MerchantPage'}}}}
+        '403': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: createOpsMerchant
+      security: [{minipayOAuth: [ops.merchant.write]}]
+      x-minipay-audience: management-api
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/CreateMerchantRequest'}}}
+      responses:
+        '201': {description: Merchant created, headers: {ETag: {$ref: '#/components/headers/ETag'}}, content: {application/json: {schema: {$ref: '#/components/schemas/Merchant'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/v1/ops/image-uploads:
+    post:
+      operationId: createOpsImageUpload
+      security: [{minipayOAuth: [ops.application.write]}]
+      x-minipay-audience: management-api
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ImageUploadRequest'}}}
+      responses:
+        '200': {description: Pre-signed upload granted, content: {application/json: {schema: {$ref: '#/components/schemas/ImageUploadGrant'}}}}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/ops/image-read-urls:
+    post:
+      operationId: createOpsImageReadUrls
+      security: [{minipayOAuth: [ops.application.write]}]
+      x-minipay-audience: management-api
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ImageReadUrlsRequest'}}}
+      responses:
+        '200': {description: Signed read URLs, content: {application/json: {schema: {$ref: '#/components/schemas/ImageReadUrlsResponse'}}}}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/ops/merchants/{merchantId}:
+    parameters: [{$ref: '#/components/parameters/MerchantId'}]
+    get:
+      operationId: getOpsMerchant
+      security: [{minipayOAuth: [ops.merchant.read]}]
+      x-minipay-audience: management-api
+      responses:
+        '200': {description: Merchant, headers: {ETag: {$ref: '#/components/headers/ETag'}}, content: {application/json: {schema: {$ref: '#/components/schemas/Merchant'}}}}
+        '404': {$ref: '#/components/responses/Problem'}
+    patch:
+      operationId: updateOpsMerchant
+      security: [{minipayOAuth: [ops.merchant.write]}]
+      x-minipay-audience: management-api
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/UpdateMerchantRequest'}}}
+      responses:
+        '200': {description: Merchant updated, headers: {ETag: {$ref: '#/components/headers/ETag'}}, content: {application/json: {schema: {$ref: '#/components/schemas/Merchant'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+    delete:
+      operationId: deleteOpsMerchant
+      security: [{minipayOAuth: [ops.merchant.write]}]
+      x-minipay-audience: management-api
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+        - {name: If-Match, in: header, required: true, schema: {type: string}}
+      responses:
+        '204': {description: Merchant deleted}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/v1/ops/merchants/{merchantId}/enable:
+    post:
+      operationId: enableOpsMerchant
+      security: [{minipayOAuth: [ops.merchant.write]}]
+      x-minipay-audience: management-api
+      parameters:
+        - {$ref: '#/components/parameters/MerchantId'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/VersionRequest'}}}}
+      responses:
+        '200': {description: Merchant enabled, content: {application/json: {schema: {$ref: '#/components/schemas/Merchant'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/v1/ops/merchants/{merchantId}/disable:
+    post:
+      operationId: disableOpsMerchant
+      security: [{minipayOAuth: [ops.merchant.write]}]
+      x-minipay-audience: management-api
+      parameters:
+        - {$ref: '#/components/parameters/MerchantId'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/VersionRequest'}}}}
+      responses:
+        '200': {description: Merchant disabled, content: {application/json: {schema: {$ref: '#/components/schemas/Merchant'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/v1/ops/merchants/{merchantId}/freeze:
+    post:
+      operationId: freezeOpsMerchant
+      security: [{minipayOAuth: [ops.merchant.write]}]
+      x-minipay-audience: management-api
+      parameters:
+        - {$ref: '#/components/parameters/MerchantId'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/FreezeRequest'}}}}
+      responses:
+        '200': {description: Merchant frozen, content: {application/json: {schema: {$ref: '#/components/schemas/Merchant'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/v1/ops/merchants/{merchantId}/unfreeze:
+    post:
+      operationId: unfreezeOpsMerchant
+      security: [{minipayOAuth: [ops.merchant.write]}]
+      x-minipay-audience: management-api
+      parameters:
+        - {$ref: '#/components/parameters/MerchantId'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/VersionRequest'}}}}
+      responses:
+        '200': {description: Merchant unfrozen, content: {application/json: {schema: {$ref: '#/components/schemas/Merchant'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/v1/ops/merchant-applies:
+    get:
+      operationId: listOpsMerchantApplies
+      security: [{minipayOAuth: [ops.merchant.read]}]
+      x-minipay-audience: management-api
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Size'}
+        - {name: applyStatus, in: query, schema: {$ref: '#/components/schemas/MerchantApplyStatus'}}
+      responses:
+        '200': {description: Merchant apply page, content: {application/json: {schema: {$ref: '#/components/schemas/MerchantApplyPage'}}}}
+        '403': {$ref: '#/components/responses/Problem'}
+  /api/v1/ops/merchant-applies/{applyId}:
+    parameters: [{name: applyId, in: path, required: true, schema: {type: integer, minimum: 1}}]
+    get:
+      operationId: getOpsMerchantApply
+      security: [{minipayOAuth: [ops.merchant.read]}]
+      x-minipay-audience: management-api
+      responses:
+        '200': {description: Merchant apply, content: {application/json: {schema: {$ref: '#/components/schemas/MerchantApply'}}}}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/v1/ops/merchant-applies/{applyId}/approve:
+    post:
+      operationId: approveOpsMerchantApply
+      security: [{minipayOAuth: [ops.merchant.write]}]
+      x-minipay-audience: management-api
+      parameters:
+        - {name: applyId, in: path, required: true, schema: {type: integer, minimum: 1}}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/VersionRequest'}}}}
+      responses:
+        '200': {description: Apply approved and merchant created, content: {application/json: {schema: {$ref: '#/components/schemas/MerchantApply'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/v1/ops/merchant-applies/{applyId}/reject:
+    post:
+      operationId: rejectOpsMerchantApply
+      security: [{minipayOAuth: [ops.merchant.write]}]
+      x-minipay-audience: management-api
+      parameters:
+        - {name: applyId, in: path, required: true, schema: {type: integer, minimum: 1}}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ApplyRejectRequest'}}}}
+      responses:
+        '200': {description: Apply rejected, content: {application/json: {schema: {$ref: '#/components/schemas/MerchantApply'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/v1/ops/merchant-applies/{applyId}/request-supplement:
+    post:
+      operationId: requestSupplementOpsMerchantApply
+      security: [{minipayOAuth: [ops.merchant.write]}]
+      x-minipay-audience: management-api
+      parameters:
+        - {name: applyId, in: path, required: true, schema: {type: integer, minimum: 1}}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ApplyRejectRequest'}}}}
+      responses:
+        '200': {description: Supplement requested, content: {application/json: {schema: {$ref: '#/components/schemas/MerchantApply'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/v1/ops/applications:
+    get:
+      operationId: listOpsApplications
+      security: [{minipayOAuth: [ops.application.read]}]
+      x-minipay-audience: management-api
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Size'}
+        - {name: appId, in: query, schema: {type: string, maxLength: 64}}
+        - {name: name, in: query, schema: {type: string, maxLength: 64}}
+        - {name: merchantId, in: query, schema: {type: string, format: uuid}}
+        - {name: status, in: query, schema: {$ref: '#/components/schemas/ApplicationStatus'}}
+        - {name: unavailable, in: query, description: Only applications whose app is ACTIVE but parent merchant is not ACTIVE, schema: {type: boolean}}
+      responses:
+        '200': {description: Application page, content: {application/json: {schema: {$ref: '#/components/schemas/ApplicationPage'}}}}
+        '403': {$ref: '#/components/responses/Problem'}
+  /api/v1/ops/applications/summary:
+    get:
+      operationId: getOpsApplicationSummary
+      security: [{minipayOAuth: [ops.application.read]}]
+      x-minipay-audience: management-api
+      responses:
+        '200': {description: Platform-wide application counts, content: {application/json: {schema: {$ref: '#/components/schemas/ApplicationSummary'}}}}
+        '403': {$ref: '#/components/responses/Problem'}
+  /api/v1/ops/application-applies:
+    get:
+      operationId: listOpsApplicationApplies
+      security: [{minipayOAuth: [ops.application.read]}]
+      x-minipay-audience: management-api
+      parameters:
+        - {$ref: '#/components/parameters/Page'}
+        - {$ref: '#/components/parameters/Size'}
+        - {name: userId, in: query, schema: {type: string, format: uuid}}
+        - {name: applyStatus, in: query, schema: {$ref: '#/components/schemas/ApplicationApplyStatus'}}
+      responses:
+        '200': {description: Application apply page, content: {application/json: {schema: {$ref: '#/components/schemas/ApplicationApplyPage'}}}}
+        '403': {$ref: '#/components/responses/Problem'}
+    post:
+      operationId: submitOpsApplicationApply
+      security: [{minipayOAuth: [ops.application.write]}]
+      x-minipay-audience: management-api
+      parameters:
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SubmitApplicationApplyRequest'}}}}
+      responses:
+        '201': {description: Application apply submitted, content: {application/json: {schema: {$ref: '#/components/schemas/ApplicationApply'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/v1/ops/application-applies/{applyId}:
+    parameters: [{name: applyId, in: path, required: true, schema: {type: integer, minimum: 1}}]
+    get:
+      operationId: getOpsApplicationApply
+      security: [{minipayOAuth: [ops.application.read]}]
+      x-minipay-audience: management-api
+      responses:
+        '200': {description: Application apply, content: {application/json: {schema: {$ref: '#/components/schemas/ApplicationApply'}}}}
+        '404': {$ref: '#/components/responses/Problem'}
+  /api/v1/ops/application-applies/{applyId}/submit:
+    post:
+      operationId: resubmitOpsApplicationApply
+      security: [{minipayOAuth: [ops.application.write]}]
+      x-minipay-audience: management-api
+      parameters:
+        - {name: applyId, in: path, required: true, schema: {type: integer, minimum: 1}}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ResubmitApplicationApplyRequest'}}}}
+      responses:
+        '200': {description: Application apply resubmitted, content: {application/json: {schema: {$ref: '#/components/schemas/ApplicationApply'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/v1/ops/application-applies/{applyId}/approve:
+    post:
+      operationId: approveOpsApplicationApply
+      security: [{minipayOAuth: [ops.application.write]}]
+      x-minipay-audience: management-api
+      parameters:
+        - {name: applyId, in: path, required: true, schema: {type: integer, minimum: 1}}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/VersionRequest'}}}}
+      responses:
+        '200': {description: Apply approved and application created, content: {application/json: {schema: {$ref: '#/components/schemas/ApplicationApply'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/v1/ops/application-applies/{applyId}/reject:
+    post:
+      operationId: rejectOpsApplicationApply
+      security: [{minipayOAuth: [ops.application.write]}]
+      x-minipay-audience: management-api
+      parameters:
+        - {name: applyId, in: path, required: true, schema: {type: integer, minimum: 1}}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ApplyRejectRequest'}}}}
+      responses:
+        '200': {description: Apply rejected, content: {application/json: {schema: {$ref: '#/components/schemas/ApplicationApply'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/v1/ops/application-applies/{applyId}/request-supplement:
+    post:
+      operationId: requestSupplementOpsApplicationApply
+      security: [{minipayOAuth: [ops.application.write]}]
+      x-minipay-audience: management-api
+      parameters:
+        - {name: applyId, in: path, required: true, schema: {type: integer, minimum: 1}}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ApplyRejectRequest'}}}}
+      responses:
+        '200': {description: Supplement requested, content: {application/json: {schema: {$ref: '#/components/schemas/ApplicationApply'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+components:
+  securitySchemes:
+    minipayOAuth:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: http://localhost:8081/oauth2/authorize
+          tokenUrl: http://localhost:8081/oauth2/token
+          scopes:
+            ops.dashboard.read: Read the platform operations dashboard
+            ops.merchant.read: Read merchants
+            ops.merchant.write: Create and change merchants
+            ops.application.read: Read applications and application applies
+            ops.application.write: Create and change applications and review application applies
+  parameters:
+    MerchantId: {name: merchantId, in: path, required: true, schema: {type: string, format: uuid}}
+    Page: {name: page, in: query, schema: {type: integer, minimum: 0, default: 0}}
+    Size: {name: size, in: query, schema: {type: integer, minimum: 1, maximum: 100, default: 20}}
+    IdempotencyKey: {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 16, maxLength: 128}}
+  headers:
+    ETag: {description: Quoted merchant version, schema: {type: string}}
+  schemas:
+    MerchantStatus: {type: string, enum: [ACTIVE, DISABLED, FROZEN]}
+    MerchantType: {type: string, enum: [PERSONAL, INDIVIDUAL, ENTERPRISE]}
+    MerchantApplyStatus: {type: string, enum: [DRAFT, PENDING, APPROVED, REJECTED, SUPPLEMENT]}
+    Merchant:
+      type: object
+      required: [merchantId, merchantNo, name, merchantType, status, accountLinked, applicationCount, deletable, createdAt, updatedAt, version]
+      properties:
+        merchantId: {type: string, format: uuid}
+        merchantNo: {type: string}
+        name: {type: string, minLength: 2, maxLength: 64}
+        merchantType: {$ref: '#/components/schemas/MerchantType'}
+        mccCode: {type: [string, 'null'], maxLength: 16}
+        address: {type: [string, 'null'], maxLength: 200}
+        latitude: {type: [number, 'null'], minimum: -90, maximum: 90}
+        longitude: {type: [number, 'null'], minimum: -180, maximum: 180}
+        shopImages: {type: [string, 'null'], maxLength: 1000}
+        status: {$ref: '#/components/schemas/MerchantStatus'}
+        freezeReason: {type: [string, 'null'], maxLength: 200}
+        accountLinked: {type: boolean}
+        ownerUserId: {type: [string, 'null'], format: uuid}
+        applicationCount: {type: integer, minimum: 0}
+        deletable: {type: boolean}
+        deletionBlockedReason: {type: [string, 'null'], enum: [MERCHANT_HAS_APPLICATIONS, MERCHANT_HAS_TRANSACTIONS, null]}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        version: {type: integer, minimum: 0}
+    MerchantPage:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/Merchant'}}
+        page: {type: integer, minimum: 0}
+        size: {type: integer, minimum: 1}
+        total: {type: integer, minimum: 0}
+    CreateMerchantRequest:
+      type: object
+      required: [name, shortName, contactName, contactMobile, merchantType]
+      properties:
+        name: {type: string, minLength: 2, maxLength: 64}
+        shortName: {type: string, minLength: 2, maxLength: 32}
+        contactName: {type: string, minLength: 2, maxLength: 64}
+        contactMobile: {type: string, pattern: '^1[3-9]\d{9}$'}
+        contactEmail: {type: [string, 'null'], maxLength: 254}
+        remark: {type: [string, 'null'], maxLength: 500}
+        merchantType: {$ref: '#/components/schemas/MerchantType'}
+        mccCode: {type: [string, 'null'], maxLength: 16}
+        address: {type: [string, 'null'], maxLength: 200}
+        latitude: {type: [number, 'null'], minimum: -90, maximum: 90}
+        longitude: {type: [number, 'null'], minimum: -180, maximum: 180}
+        shopImages: {type: [string, 'null'], maxLength: 1000}
+        status: {$ref: '#/components/schemas/MerchantStatus'}
+    UpdateMerchantRequest:
+      type: object
+      required: [name, shortName, contactName, contactMobile, merchantType, version]
+      properties:
+        name: {type: string, minLength: 2, maxLength: 64}
+        shortName: {type: string, minLength: 2, maxLength: 32}
+        contactName: {type: string, minLength: 2, maxLength: 64}
+        contactMobile: {type: string, pattern: '^1[3-9]\d{9}$'}
+        contactEmail: {type: [string, 'null'], maxLength: 254}
+        remark: {type: [string, 'null'], maxLength: 500}
+        merchantType: {$ref: '#/components/schemas/MerchantType'}
+        mccCode: {type: [string, 'null'], maxLength: 16}
+        address: {type: [string, 'null'], maxLength: 200}
+        latitude: {type: [number, 'null'], minimum: -90, maximum: 90}
+        longitude: {type: [number, 'null'], minimum: -180, maximum: 180}
+        shopImages: {type: [string, 'null'], maxLength: 1000}
+        version: {type: integer, minimum: 0}
+    ImageUploadRequest:
+      type: object
+      required: [fileName, contentType, sizeBytes, sha256]
+      properties:
+        fileName: {type: string, minLength: 1, maxLength: 255}
+        contentType: {type: string, enum: [image/jpeg, image/png, image/webp]}
+        sizeBytes: {type: integer, minimum: 1, maximum: 5242880}
+        sha256: {type: string, pattern: '^[a-fA-F0-9]{64}$'}
+    ImageUploadGrant:
+      type: object
+      required: [uploadUrl, objectKey, requiredHeaders, expiresAt]
+      properties:
+        uploadUrl: {type: string, format: uri}
+        objectKey: {type: string}
+        requiredHeaders: {type: object, additionalProperties: {type: string}}
+        expiresAt: {type: string, format: date-time}
+    ImageReadUrlsRequest:
+      type: object
+      required: [objectKeys]
+      properties:
+        objectKeys: {type: array, minItems: 1, maxItems: 20, items: {type: string, minLength: 1}}
+    ImageReadUrlsResponse:
+      type: object
+      required: [urls]
+      properties:
+        urls: {type: object, additionalProperties: {type: string, format: uri}}
+    VersionRequest:
+      type: object
+      required: [version]
+      properties: {version: {type: integer, minimum: 0}}
+    FreezeRequest:
+      type: object
+      required: [version, reason]
+      properties:
+        version: {type: integer, minimum: 0}
+        reason: {type: string, minLength: 1, maxLength: 200}
+    ApplyRejectRequest:
+      type: object
+      required: [version, reason]
+      properties:
+        version: {type: integer, minimum: 0}
+        reason: {type: string, minLength: 1, maxLength: 200}
+    MerchantApply:
+      type: object
+      required: [id, userId, merchantType, shopName, contactName, contactMobile, applyStatus, applyTime, version, createdAt, updatedAt]
+      properties:
+        id: {type: integer, minimum: 1}
+        userId: {type: string, format: uuid}
+        merchantType: {$ref: '#/components/schemas/MerchantType'}
+        shopName: {type: string, minLength: 2, maxLength: 64}
+        mccCode: {type: [string, 'null'], maxLength: 16}
+        address: {type: [string, 'null'], maxLength: 200}
+        shopImages: {type: [string, 'null'], maxLength: 1000}
+        contactName: {type: string, minLength: 2, maxLength: 64}
+        contactMobile: {type: string, maxLength: 32}
+        contactEmail: {type: [string, 'null'], maxLength: 254}
+        remark: {type: [string, 'null'], maxLength: 500}
+        applyStatus: {$ref: '#/components/schemas/MerchantApplyStatus'}
+        rejectReason: {type: [string, 'null'], maxLength: 200}
+        auditAdminId: {type: [string, 'null']}
+        resultantMerchantId: {type: [string, 'null'], format: uuid}
+        applyTime: {type: string, format: date-time}
+        auditTime: {type: [string, 'null'], format: date-time}
+        version: {type: integer, minimum: 0}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    MerchantApplyPage:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/MerchantApply'}}
+        page: {type: integer, minimum: 0}
+        size: {type: integer, minimum: 1}
+        total: {type: integer, minimum: 0}
+    ApplicationStatus: {type: string, enum: [ACTIVE, DISABLED]}
+    ApplicationView:
+      type: object
+      required: [applicationId, appId, name, merchantId, merchantNo, merchantName, merchantStatus, status, hasTransactions, deletable, recentTransactionCount, createdAt, updatedAt, version]
+      properties:
+        applicationId: {type: string, format: uuid}
+        appId: {type: string}
+        name: {type: string, minLength: 2, maxLength: 64}
+        merchantId: {type: string, format: uuid}
+        merchantNo: {type: string}
+        merchantName: {type: string}
+        merchantStatus: {$ref: '#/components/schemas/MerchantStatus'}
+        status: {$ref: '#/components/schemas/ApplicationStatus'}
+        hasTransactions: {type: boolean}
+        deletable: {type: boolean}
+        deletionBlockedReason: {type: [string, 'null'], enum: [APPLICATION_MUST_BE_DISABLED, APPLICATION_HAS_TRANSACTIONS, APPLICATION_HAS_DEPENDENCIES, null]}
+        recentTransactionCount: {type: integer, minimum: 0}
+        lastTransactionAt: {type: [string, 'null'], format: date-time}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        version: {type: integer, minimum: 0}
+    ApplicationPage:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/ApplicationView'}}
+        page: {type: integer, minimum: 0}
+        size: {type: integer, minimum: 1}
+        total: {type: integer, minimum: 0}
+    ApplicationSummary:
+      type: object
+      required: [totalCount, activeCount, disabledCount, unavailableCount]
+      properties:
+        totalCount: {type: integer, minimum: 0}
+        activeCount: {type: integer, minimum: 0}
+        disabledCount: {type: integer, minimum: 0}
+        unavailableCount: {type: integer, minimum: 0}
+    ApplicationApplyStatus: {type: string, enum: [PENDING, APPROVED, REJECTED, SUPPLEMENT]}
+    ApplicationApply:
+      type: object
+      required: [id, userId, merchantId, name, applyStatus, applyTime, version, createdAt, updatedAt]
+      properties:
+        id: {type: integer, minimum: 1}
+        userId: {type: string, format: uuid}
+        merchantId: {type: string, format: uuid}
+        merchantNo: {type: [string, 'null']}
+        merchantName: {type: [string, 'null']}
+        name: {type: string, minLength: 2, maxLength: 64}
+        applyStatus: {$ref: '#/components/schemas/ApplicationApplyStatus'}
+        rejectReason: {type: [string, 'null'], maxLength: 200}
+        auditAdminId: {type: [string, 'null']}
+        resultantApplicationId: {type: [string, 'null'], format: uuid}
+        applyTime: {type: string, format: date-time}
+        auditTime: {type: [string, 'null'], format: date-time}
+        version: {type: integer, minimum: 0}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    ApplicationApplyPage:
+      type: object
+      required: [items, page, size, total]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/ApplicationApply'}}
+        page: {type: integer, minimum: 0}
+        size: {type: integer, minimum: 1}
+        total: {type: integer, minimum: 0}
+    SubmitApplicationApplyRequest:
+      type: object
+      required: [merchantId, name]
+      properties:
+        merchantId: {type: string, format: uuid}
+        name: {type: string, minLength: 2, maxLength: 64}
+    ResubmitApplicationApplyRequest:
+      type: object
+      required: [name, version]
+      properties:
+        name: {type: string, minLength: 2, maxLength: 64}
+        version: {type: integer, minimum: 0}
+    OpsDashboard:
+      type: object
+      required: [range, timezone, from, to, dataAsOf, summary, trend, pending]
+      properties:
+        range: {type: string, enum: [7d, 30d]}
+        timezone: {type: string, example: Asia/Shanghai}
+        from: {type: string, format: date}
+        to: {type: string, format: date}
+        dataAsOf: {type: string, format: date-time}
+        summary: {$ref: '#/components/schemas/DashboardSummary'}
+        trend: {type: array, items: {$ref: '#/components/schemas/DailyMetric'}}
+        pending: {$ref: '#/components/schemas/PendingCounts'}
+    DashboardSummary:
+      type: object
+      required: [paymentAmountCent, paymentCount, successRateBasisPoints, refundAmountCent, activeMerchantCount]
+      properties:
+        paymentAmountCent: {type: integer}
+        paymentCount: {type: integer}
+        successRateBasisPoints: {type: integer, minimum: 0, maximum: 10000}
+        refundAmountCent: {type: integer}
+        activeMerchantCount: {type: integer}
+    DailyMetric:
+      type: object
+      required: [date, submittedPaymentCount, successfulPaymentCount, paymentAmountCent, successfulRefundCount, refundAmountCent]
+      properties:
+        date: {type: string, format: date}
+        submittedPaymentCount: {type: integer}
+        successfulPaymentCount: {type: integer}
+        paymentAmountCent: {type: integer}
+        successfulRefundCount: {type: integer}
+        refundAmountCent: {type: integer}
+    PendingCounts:
+      type: object
+      required: [abnormalPaymentCount, abnormalRefundCount, abnormalTransferCount, failedNotificationCount]
+      properties:
+        abnormalPaymentCount: {type: integer}
+        abnormalRefundCount: {type: integer}
+        abnormalTransferCount: {type: integer}
+        failedNotificationCount: {type: integer}
+    Problem: {$ref: './components/problem-details-v1.yaml#/components/schemas/ProblemDetails'}
+  responses:
+    Problem: {description: Problem Details, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}

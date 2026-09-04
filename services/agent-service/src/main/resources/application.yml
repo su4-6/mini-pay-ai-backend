@@ -1,0 +1,106 @@
+server:
+  port: ${SERVER_PORT:8086}
+  shutdown: graceful
+
+spring:
+  application:
+    name: agent-service
+  config:
+    import:
+      - optional:file:.env[.properties]
+      - optional:file:../../.env[.properties]
+  ai:
+    model:
+      chat: ${MODEL_CHAT_MODE:none}
+    openai:
+      base-url: ${MODEL_BASE_URL:https://api.deepseek.com}
+      api-key: ${MODEL_API_KEY:disabled-local-placeholder}
+      chat:
+        options:
+          model: ${MODEL_NAME:deepseek-v4-flash}
+          max-tokens: ${MODEL_MAX_TOKENS:2048}
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${MYSQL_URL:jdbc:mysql://localhost:3306/minipay_agent}
+    username: ${MYSQL_USERNAME:minipay}
+    password: ${MYSQL_PASSWORD:minipay}
+  flyway:
+    enabled: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:minipay}
+    password: ${RABBITMQ_PASSWORD:minipay}
+
+minipay:
+  agent:
+    event-retention: ${AGENT_EVENT_RETENTION:24h}
+    sse-heartbeat: ${AGENT_SSE_HEARTBEAT:15s}
+    sse-idle-timeout: ${AGENT_SSE_IDLE_TIMEOUT:120s}
+    model:
+      enabled: ${MODEL_ENABLED:false}
+      thinking-enabled: ${MODEL_THINKING_ENABLED:false}
+      request-timeout: ${MODEL_REQUEST_TIMEOUT:45s}
+      max-concurrent-calls: ${AGENT_MAX_CONCURRENT_MODEL_CALLS:32}
+      health-cache: ${MODEL_HEALTH_CACHE:60s}
+    runs:
+      max-concurrent-per-user: ${AGENT_MAX_CONCURRENT_RUNS_PER_USER:3}
+      stale-timeout: ${AGENT_RUN_STALE_TIMEOUT:3m}
+    sandbox-zone: ${COMMERCE_SANDBOX_ZONE:CN-SH-PD}
+    downstream:
+      identity-base-url: ${IDENTITY_INTERNAL_URL:http://localhost:8081}
+      wallet-base-url: ${WALLET_INTERNAL_URL:http://localhost:8083}
+      payment-base-url: ${PAYMENT_INTERNAL_URL:http://localhost:8082}
+      commerce-base-url: ${COMMERCE_INTERNAL_URL:http://localhost:8085}
+      timeout: ${AGENT_DOWNSTREAM_TIMEOUT:5s}
+    identity:
+      token-url: ${IDENTITY_TOKEN_URL:http://localhost:8081/oauth2/token}
+      client-id: ${AGENT_DELEGATION_CLIENT_ID:minipay-agent-service}
+      client-secret: ${AGENT_DELEGATION_CLIENT_SECRET:minipay-agent-delegation-demo-secret}
+      exchange-timeout: ${AGENT_TOKEN_EXCHANGE_TIMEOUT:5s}
+    profile-identity:
+      base-url: ${IDENTITY_INTERNAL_URL:http://localhost:8081}
+      client-id: ${AGENT_TO_IDENTITY_CLIENT_ID:minipay-agent-to-identity}
+      client-secret: ${AGENT_TO_IDENTITY_CLIENT_SECRET:minipay-agent-identity-demo-secret}
+    object-storage:
+      provider: ${OBJECT_STORAGE_PROVIDER:disabled}
+      endpoint: ${ALIYUN_OSS_ENDPOINT:}
+      region: ${ALIYUN_OSS_REGION:}
+      bucket: ${ALIYUN_OSS_BUCKET:}
+      ram-role-name: ${ALIYUN_OSS_RAM_ROLE_NAME:${ALIYUN_RAM_ROLE_NAME:}}
+      access-key-id: ${ALIYUN_OSS_ACCESS_KEY_ID:${ALIBABA_CLOUD_ACCESS_KEY_ID:${ALIYUN_ACCESS_KEY_ID:}}}
+      access-key-secret: ${ALIYUN_OSS_ACCESS_KEY_SECRET:${ALIBABA_CLOUD_ACCESS_KEY_SECRET:${ALIYUN_ACCESS_KEY_SECRET:}}}
+      security-token: ${ALIYUN_OSS_SECURITY_TOKEN:${ALIBABA_CLOUD_SECURITY_TOKEN:}}
+      upload-ttl: ${VOICE_UPLOAD_TTL:PT10M}
+      read-ttl: ${VOICE_READ_TTL:PT5M}
+    calls:
+      ring-timeout: ${VOICE_CALL_RING_TIMEOUT:PT30S}
+      turn-urls: ${TURN_URLS:stun:stun.l.google.com:19302}
+      turn-shared-secret: ${TURN_SHARED_SECRET:}
+      turn-credential-ttl: ${TURN_CREDENTIAL_TTL:PT1H}
+  security:
+    issuer: ${IDENTITY_ISSUER:http://localhost:8081}
+    jwk-set-uri: ${IDENTITY_INTERNAL_URL:http://localhost:8081}/oauth2/jwks
+
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true
+    default-fetch-size: 100
+    default-statement-timeout: 5
+
+management:
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus

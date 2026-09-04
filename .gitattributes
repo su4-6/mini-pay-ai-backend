@@ -1,0 +1,3 @@
+# Docker 挂载进容器的脚本必须保持 LF，否则 Windows checkout 的 CRLF 会破坏 shebang
+docker/**/*.sh text eol=lf
+docker/**/*.sql text eol=lf

@@ -1,0 +1,30 @@
+spring:
+  flyway:
+    # The existing local database previously ran the repeatable demo seed.
+    # Keep all other Flyway validation enabled while allowing that local-only
+    # migration to remain absent from the active migration locations.
+    ignore-migration-patterns:
+      - repeatable:missing
+
+server:
+  servlet:
+    session:
+      cookie:
+        secure: false
+
+minipay:
+  identity:
+    # Unsafe local-only fallbacks. Shared and deployed environments must supply
+    # independent secrets through their secret manager.
+    audit-hash-pepper: ${AUTH_AUDIT_PEPPER:minipay-local-console-audit-change-me}
+    management-client:
+      client-secret: ${MANAGEMENT_OAUTH_CLIENT_SECRET:minipay-local-console-management-change-me}
+    internal-clients:
+      payment-to-identity:
+        client-secret: ${PAYMENT_TO_IDENTITY_CLIENT_SECRET:minipay-local-console-payment-identity-change-me}
+      payment-to-wallet:
+        client-secret: ${PAYMENT_TO_WALLET_CLIENT_SECRET:minipay-local-console-payment-wallet-change-me}
+      agent-to-payment:
+        client-secret: ${AGENT_TO_PAYMENT_CLIENT_SECRET:minipay-local-console-agent-payment-change-me}
+    sms:
+      provider: console

@@ -1,0 +1,303 @@
+openapi: 3.1.0
+info:
+  title: MiniPay Sandbox Food Commerce API
+  version: 1.0.0
+  description: |
+    Commerce owns merchants, menus, inventory, carts, delivery-address IDs, authoritative
+    checkout quotes, food orders and fulfillment. Payment amounts are never supplied by AI
+    or Android; payment-service creates its order from commerce.food-order.created.
+servers:
+  - url: http://localhost:8085
+paths:
+  /api/v1/commerce/addresses:
+    get:
+      operationId: listDeliveryAddresses
+      summary: List current-user masked delivery addresses
+      security: [{minipayOAuth: [commerce.use]}]
+      x-minipay-audience: consumer-api
+      responses:
+        '200': {description: Masked addresses, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/DeliveryAddress'}}}}}
+    post:
+      operationId: createDeliveryAddress
+      summary: Encrypt and save a current-user delivery address
+      security: [{minipayOAuth: [commerce.use]}]
+      x-minipay-audience: consumer-api
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateAddressRequest'}}}}
+      responses:
+        '201': {description: Masked saved address, content: {application/json: {schema: {$ref: '#/components/schemas/DeliveryAddress'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+  /api/v1/commerce/orders:
+    post:
+      operationId: createFoodOrder
+      summary: Create an immutable food order from an unexpired authoritative quote
+      security: [{minipayOAuth: [commerce.use]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CreateOrderRequest'}}}}
+      responses:
+        '201': {description: Created food order, content: {application/json: {schema: {$ref: '#/components/schemas/FoodOrder'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+        '422': {$ref: '#/components/responses/Problem'}
+  /api/v1/commerce/orders/{orderId}/cancel:
+    post:
+      operationId: cancelFoodOrder
+      summary: Explicitly cancel or request a full refund for a current-user food order
+      security: [{minipayOAuth: [commerce.use]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/OrderId'}]
+      responses:
+        '200': {description: Current food order, content: {application/json: {schema: {$ref: '#/components/schemas/FoodOrder'}}}}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+  /internal/v1/agent/merchants:
+    get:
+      operationId: agentSearchMerchants
+      summary: Search sandbox merchants with deterministic filters
+      security: [{delegatedBearer: [commerce.agent.catalog.read]}]
+      x-minipay-audience: commerce-internal
+      x-minipay-purpose: FOOD_DISCOVERY
+      parameters:
+        - {name: zoneCode, in: query, required: true, schema: {type: string}}
+        - {name: categoryCode, in: query, schema: {type: string}}
+        - {name: maxDeliveryFeeCent, in: query, schema: {type: integer, format: int64, minimum: 0}}
+        - {name: maxDeliveryMinutes, in: query, schema: {type: integer, minimum: 1}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 50, default: 10}}
+      responses:
+        '200': {description: Merchants, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Merchant'}}}}}
+  /internal/v1/agent/merchants/{merchantId}/menu:
+    get:
+      operationId: agentGetMerchantMenu
+      summary: Read authoritative menu, SKU price and current inventory
+      security: [{delegatedBearer: [commerce.agent.catalog.read]}]
+      x-minipay-audience: commerce-internal
+      x-minipay-purpose: FOOD_DISCOVERY
+      parameters: [{$ref: '#/components/parameters/MerchantId'}]
+      responses:
+        '200': {description: Menu, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/MenuItem'}}}}}
+  /internal/v1/agent/carts/{merchantId}:
+    get:
+      operationId: agentGetCart
+      summary: Read current-user merchant cart
+      security: [{delegatedBearer: [commerce.agent.cart.write]}]
+      x-minipay-audience: commerce-internal
+      x-minipay-purpose: FOOD_CART
+      parameters: [{$ref: '#/components/parameters/MerchantId'}]
+      responses:
+        '200': {description: Cart, content: {application/json: {schema: {$ref: '#/components/schemas/Cart'}}}}
+  /internal/v1/agent/carts/{merchantId}/items/{skuId}:
+    put:
+      operationId: agentUpdateCart
+      summary: Deterministically update one cart SKU; no payment side effect
+      security: [{delegatedBearer: [commerce.agent.cart.write]}]
+      x-minipay-audience: commerce-internal
+      x-minipay-purpose: FOOD_CART
+      parameters:
+        - {$ref: '#/components/parameters/MerchantId'}
+        - {name: skuId, in: path, required: true, schema: {type: string, format: uuid}}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/UpdateCartRequest'}}}}
+      responses:
+        '200': {description: Updated cart, content: {application/json: {schema: {$ref: '#/components/schemas/Cart'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+  /internal/v1/agent/checkout-quotes:
+    post:
+      operationId: agentPrepareCheckoutQuote
+      summary: Prepare a short-lived authoritative quote; no payment side effect
+      security: [{delegatedBearer: [commerce.agent.checkout.prepare]}]
+      x-minipay-audience: commerce-internal
+      x-minipay-purpose: FOOD_CHECKOUT
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PrepareQuoteRequest'}}}}
+      responses:
+        '200': {description: Authoritative quote, content: {application/json: {schema: {$ref: '#/components/schemas/CheckoutQuote'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+        '422': {$ref: '#/components/responses/Problem'}
+  /internal/v1/agent/orders/{orderId}:
+    get:
+      operationId: agentGetFoodOrder
+      summary: Read authoritative current-user food order state
+      security: [{delegatedBearer: [commerce.agent.order.read]}]
+      x-minipay-audience: commerce-internal
+      x-minipay-purpose: ORDER_QUERY
+      parameters: [{$ref: '#/components/parameters/OrderId'}]
+      responses:
+        '200': {description: Food order, content: {application/json: {schema: {$ref: '#/components/schemas/FoodOrder'}}}}
+  /internal/v1/agent/orders/{orderId}/cancellation-preview:
+    get:
+      operationId: agentPrepareFoodCancellation
+      summary: Prepare cancellation/full-refund facts; Android must execute explicitly
+      security: [{delegatedBearer: [commerce.agent.cancel.prepare]}]
+      x-minipay-audience: commerce-internal
+      x-minipay-purpose: ORDER_CANCEL or ORDER_REFUND
+      parameters: [{$ref: '#/components/parameters/OrderId'}]
+      responses:
+        '200': {description: Cancellation preview, content: {application/json: {schema: {$ref: '#/components/schemas/CancellationPreview'}}}}
+components:
+  securitySchemes:
+    minipayOAuth:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: http://localhost:8081/oauth2/authorize
+          tokenUrl: http://localhost:8081/oauth2/token
+          scopes: {commerce.use: Use sandbox food-commerce flows}
+    delegatedBearer: {type: http, scheme: bearer, bearerFormat: JWT}
+  parameters:
+    IdempotencyKey: {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 8, maxLength: 128}}
+    MerchantId: {name: merchantId, in: path, required: true, schema: {type: string, format: uuid}}
+    OrderId: {name: orderId, in: path, required: true, schema: {type: string, format: uuid}}
+  schemas:
+    MoneyCent: {type: integer, format: int64, minimum: 0, description: CNY cents}
+    Merchant:
+      type: object
+      required: [id, name, categoryCode, minimumOrderCent, deliveryFeeCent, estimatedDeliveryMinutes]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        categoryCode: {type: string}
+        minimumOrderCent: {$ref: '#/components/schemas/MoneyCent'}
+        deliveryFeeCent: {$ref: '#/components/schemas/MoneyCent'}
+        estimatedDeliveryMinutes: {type: integer}
+    MenuItem:
+      type: object
+      required: [itemId, name, skus]
+      properties:
+        itemId: {type: string, format: uuid}
+        name: {type: string}
+        description: {type: string}
+        tasteTags: {type: string}
+        allergenTags: {type: string}
+        skus: {type: array, items: {$ref: '#/components/schemas/Sku'}}
+    Sku:
+      type: object
+      required: [skuId, name, priceCent, availableQuantity, version]
+      properties:
+        skuId: {type: string, format: uuid}
+        name: {type: string}
+        priceCent: {$ref: '#/components/schemas/MoneyCent'}
+        availableQuantity: {type: integer, minimum: 0}
+        version: {type: integer, format: int64}
+    Cart:
+      type: object
+      required: [cartId, userId, merchantId, merchantName, version, items, itemAmountCent]
+      properties:
+        cartId: {type: string, format: uuid}
+        userId: {type: string, format: uuid}
+        merchantId: {type: string, format: uuid}
+        merchantName: {type: string}
+        version: {type: integer, format: int64}
+        items: {type: array, items: {$ref: '#/components/schemas/CartItem'}}
+        itemAmountCent: {$ref: '#/components/schemas/MoneyCent'}
+    CartItem:
+      type: object
+      required: [cartItemId, skuId, itemName, skuName, unitPriceCent, quantity, lineAmountCent]
+      properties:
+        cartItemId: {type: string, format: uuid}
+        skuId: {type: string, format: uuid}
+        itemName: {type: string}
+        skuName: {type: string}
+        optionSummary: {type: string}
+        unitPriceCent: {$ref: '#/components/schemas/MoneyCent'}
+        quantity: {type: integer, minimum: 1}
+        lineAmountCent: {$ref: '#/components/schemas/MoneyCent'}
+    UpdateCartRequest:
+      type: object
+      additionalProperties: false
+      required: [quantity]
+      properties:
+        quantity: {type: integer, minimum: 0, maximum: 99}
+        optionIds: {type: array, items: {type: string, format: uuid}}
+        expectedCartVersion: {type: [integer, 'null'], format: int64, minimum: 0}
+    PrepareQuoteRequest:
+      type: object
+      additionalProperties: false
+      required: [merchantId, addressId, expectedCartVersion]
+      properties:
+        merchantId: {type: string, format: uuid}
+        addressId: {type: string, format: uuid}
+        expectedCartVersion: {type: integer, format: int64, minimum: 0}
+    CheckoutQuote:
+      type: object
+      required: [id, userId, cartId, merchantId, addressId, cartVersion, itemAmountCent, deliveryFeeCent, discountCent, payableAmountCent, expiresAt, items]
+      properties:
+        id: {type: string, format: uuid}
+        userId: {type: string, format: uuid}
+        cartId: {type: string, format: uuid}
+        merchantId: {type: string, format: uuid}
+        addressId: {type: string, format: uuid}
+        cartVersion: {type: integer, format: int64}
+        itemAmountCent: {$ref: '#/components/schemas/MoneyCent'}
+        deliveryFeeCent: {$ref: '#/components/schemas/MoneyCent'}
+        discountCent: {$ref: '#/components/schemas/MoneyCent'}
+        payableAmountCent: {$ref: '#/components/schemas/MoneyCent'}
+        expiresAt: {type: string, format: date-time}
+        items: {type: array, items: {type: object}}
+    FoodOrder:
+      type: object
+      required: [id, orderNo, userId, merchantId, merchantName, addressId, addressSummary, quoteId, itemAmountCent, deliveryFeeCent, discountCent, payableAmountCent, status, paymentStatus, refundStatus, expiresAt, version, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        orderNo: {type: string}
+        userId: {type: string, format: uuid}
+        merchantId: {type: string, format: uuid}
+        merchantName: {type: string}
+        addressId: {type: string, format: uuid}
+        addressSummary: {type: string}
+        quoteId: {type: string, format: uuid}
+        paymentOrderId: {type: [string, 'null'], format: uuid}
+        itemAmountCent: {$ref: '#/components/schemas/MoneyCent'}
+        deliveryFeeCent: {$ref: '#/components/schemas/MoneyCent'}
+        discountCent: {$ref: '#/components/schemas/MoneyCent'}
+        payableAmountCent: {$ref: '#/components/schemas/MoneyCent'}
+        status: {type: string, enum: [PENDING_PAYMENT, PAID, MERCHANT_ACCEPTED, PREPARING, DELIVERING, DELIVERED, CANCELLATION_PENDING, CANCELLED, REFUND_FAILED]}
+        paymentStatus: {type: string, enum: [UNPAID, SUCCEEDED, FAILED]}
+        refundStatus: {type: string, enum: [NONE, REQUESTED, PROCESSING, SUCCEEDED, FAILED]}
+        expiresAt: {type: string, format: date-time}
+        version: {type: integer, format: int64}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    DeliveryAddress:
+      type: object
+      description: Never includes recipient, mobile or full address.
+      required: [id, label, maskedSummary, zoneCode, defaultAddress, version, createdAt, updatedAt]
+      properties:
+        id: {type: string, format: uuid}
+        label: {type: string}
+        maskedSummary: {type: string}
+        zoneCode: {type: string}
+        defaultAddress: {type: boolean}
+        version: {type: integer, format: int64}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    CreateAddressRequest:
+      type: object
+      additionalProperties: false
+      required: [label, recipient, mobile, address, zoneCode, defaultAddress]
+      properties:
+        label: {type: string, minLength: 1, maxLength: 32}
+        recipient: {type: string, minLength: 1, maxLength: 64, writeOnly: true}
+        mobile: {type: string, pattern: '^1[3-9][0-9]{9}$', writeOnly: true}
+        address: {type: string, minLength: 1, maxLength: 512, writeOnly: true}
+        zoneCode: {type: string, minLength: 1, maxLength: 64}
+        defaultAddress: {type: boolean}
+    CreateOrderRequest:
+      type: object
+      additionalProperties: false
+      required: [quoteId]
+      properties: {quoteId: {type: string, format: uuid}}
+    CancellationPreview:
+      type: object
+      required: [orderId, orderNo, status, action, cancellable, amountCent, currency, expiresAt]
+      properties:
+        orderId: {type: string, format: uuid}
+        orderNo: {type: string}
+        status: {type: string}
+        action: {type: string, enum: [CANCEL, FULL_REFUND]}
+        cancellable: {type: boolean}
+        amountCent: {$ref: '#/components/schemas/MoneyCent'}
+        currency: {type: string, const: CNY}
+        expiresAt: {type: string, format: date-time}
+    Problem: {$ref: './components/problem-details-v1.yaml#/components/schemas/ProblemDetails'}
+  responses:
+    Problem:
+      description: RFC 9457 Problem Details with stable code and requestId
+      content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}

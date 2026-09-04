@@ -1,0 +1,2 @@
+ALTER TABLE recharge_order
+  MODIFY COLUMN status VARCHAR(32) NOT NULL;

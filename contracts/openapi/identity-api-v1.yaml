@@ -1,0 +1,731 @@
+openapi: 3.1.0
+info:
+  title: MiniPay Identity API
+  version: 1.3.0
+paths:
+  /oauth2/token:
+    post:
+      operationId: exchangeAgentDelegatedToken
+      summary: Exchange an Android access token for a short-lived Agent delegated token
+      description: |
+        RFC 8693 profile restricted to the confidential Agent client. Exactly one internal
+        audience, a least-privilege tool scope, purpose and run_id are required. The subject
+        token is transient and must never be logged or forwarded to the model.
+      security: [{agentClientBasic: []}]
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema: {$ref: '#/components/schemas/AgentTokenExchangeRequest'}
+      responses:
+        '200':
+          description: Short-lived delegated bearer token
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/OAuthTokenExchangeResponse'}
+        '400': {description: OAuth invalid_request, invalid_grant, invalid_scope or invalid_target}
+        '401': {description: OAuth invalid_client}
+  /internal/v1/agent/recipients/resolve-exact-mobile:
+    post:
+      operationId: agentResolveExactMobileRecipient
+      summary: Resolve one recipient by a transient exact mainland mobile number
+      description: No fuzzy search. The mobile must not be logged, persisted, traced or returned.
+      security: [{delegatedBearer: [identity.agent.recipient.resolve]}]
+      x-minipay-audience: identity-internal
+      x-minipay-purpose: RECIPIENT_RESOLUTION
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ResolveTransferRecipientRequest'}}}
+      responses:
+        '200': {description: Safe recipient display data, content: {application/json: {schema: {$ref: '#/components/schemas/TransferRecipient'}}}}
+        '404': {$ref: '#/components/responses/Problem'}
+        '429': {$ref: '#/components/responses/Problem'}
+  /internal/v1/agent/contacts/resolve-exact:
+    post:
+      operationId: agentResolveExactFriendRecipient
+      summary: Resolve current-user friends by exact nickname or complete verified legal name
+      description: |
+        Searches active friend relations only. Nickname and verified legal-name matches are merged
+        by recipient user ID. The raw query is transient and must not be logged, traced, persisted
+        or sent to a model. No fragments, pinyin, approximate matching or global name search.
+      security: [{delegatedBearer: [agent.contact.read]}]
+      x-minipay-audience: identity-internal
+      x-minipay-purpose: CONTACT_LOOKUP
+      requestBody:
+        required: true
+        content: {application/json: {schema: {$ref: '#/components/schemas/ResolveExactFriendRequest'}}}
+      responses:
+        '200':
+          description: Zero to ten deduplicated, masked friend candidates
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 10
+                items: {$ref: '#/components/schemas/ExactFriendRecipient'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+        '429': {$ref: '#/components/responses/Problem'}
+  /api/v1/transfer-recipients/resolve:
+    post:
+      summary: Resolve an active transfer recipient by an exact mainland mobile number
+      description: The raw mobile is transient request data and is never returned or logged.
+      security: [{minipayOAuth: [payment.transfer.write]}]
+      x-minipay-audience: consumer-api
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: '#/components/schemas/ResolveTransferRecipientRequest'}}
+      responses:
+        '200': {description: Safe recipient display data, content: {application/json: {schema: {$ref: '#/components/schemas/TransferRecipient'}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+        '404': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '429': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/users/me:
+    get:
+      summary: Get the authenticated consumer profile
+      security: [{minipayOAuth: [identity.profile.read]}]
+      x-minipay-audience: consumer-api
+      responses:
+        '200': {description: Profile, content: {application/json: {schema: {$ref: '#/components/schemas/ProfileView'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '403': {$ref: '#/components/responses/Problem'}
+    patch:
+      summary: Update nickname and optionally consume an uploaded avatar
+      security: [{minipayOAuth: [identity.profile.write]}]
+      x-minipay-audience: consumer-api
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: '#/components/schemas/UpdateProfileRequest'}}
+      responses:
+        '200': {description: Updated profile, content: {application/json: {schema: {$ref: '#/components/schemas/ProfileView'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+        '422': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/users/me/avatar-uploads:
+    post:
+      summary: Create a short-lived private OSS avatar upload grant
+      security: [{minipayOAuth: [identity.profile.write]}]
+      x-minipay-audience: consumer-api
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: '#/components/schemas/AvatarUploadRequest'}}
+      responses:
+        '201': {description: Upload grant, content: {application/json: {schema: {$ref: '#/components/schemas/AvatarUploadGrant'}}}}
+        '422': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/auth/consumer/code/send:
+    post:
+      summary: Request a consumer login verification code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsumerCodeSendRequest'
+      responses:
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsumerCodeChallenge'
+        '429': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/auth/consumer/code/verify:
+    post:
+      summary: Verify a consumer login code and issue a PKCE-bound authorization code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConsumerCodeVerifyRequest'
+      responses:
+        '200':
+          description: Verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ConsumerAuthorizationCode'
+        '400': {$ref: '#/components/responses/Problem'}
+        '423': {$ref: '#/components/responses/Problem'}
+        '429': {$ref: '#/components/responses/Problem'}
+  /api/v1/payment-authorizations:
+    post:
+      summary: Issue one-time payment authorization
+      security: [{minipayOAuth: [identity.payment-authorization.write]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentAuthorizationRequest'
+      responses:
+        '201': {description: Created, content: {application/json: {schema: {$ref: '#/components/schemas/PaymentAuthorization'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+        '422': {$ref: '#/components/responses/Problem'}
+  /api/v1/users/me/onboarding:
+    put:
+      summary: Complete first-login consumer initialization
+      description: Sets the required nickname and optional user-bound avatar. Payment password and real-name verification are independent capabilities.
+      security: [{minipayOAuth: [identity.profile.write]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/ConsumerOnboardingRequest'}
+      responses:
+        '200': {description: Existing completed onboarding, content: {application/json: {schema: {$ref: '#/components/schemas/ConsumerOnboardingResponse'}}}}
+        '201': {description: Completed, content: {application/json: {schema: {$ref: '#/components/schemas/ConsumerOnboardingResponse'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+        '422': {$ref: '#/components/responses/Problem'}
+  /api/v1/real-name-verifications:
+    post:
+      summary: Submit transient legal-name, identity-number and live JPEG evidence
+      security: [{minipayOAuth: [identity.profile.write]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: {$ref: '#/components/schemas/RealNameVerificationRequest'}
+      responses:
+        '201': {description: Verification recorded, content: {application/json: {schema: {$ref: '#/components/schemas/RealNameVerification'}}}}
+        '422': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/users/me/payment-password:
+    put:
+      summary: Set the initial independent six-digit payment password
+      security: [{minipayOAuth: [identity.profile.write]}]
+      x-minipay-audience: consumer-api
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/SetPaymentPasswordRequest'}}}}
+      responses:
+        '204': {description: Password set}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/v1/users/me/capabilities:
+    get:
+      summary: Read onboarding, real-name and payment-password capabilities
+      security: [{minipayOAuth: [identity.profile.read]}]
+      x-minipay-audience: consumer-api
+      responses:
+        '200': {description: Capabilities, content: {application/json: {schema: {$ref: '#/components/schemas/ConsumerCapabilities'}}}}
+  /api/v1/users/me/account-security:
+    get:
+      summary: Read the authenticated consumer's masked account-security overview
+      security: [{minipayOAuth: [identity.profile.read]}]
+      x-minipay-audience: consumer-api
+      responses:
+        '200': {description: Account-security overview, content: {application/json: {schema: {$ref: '#/components/schemas/AccountSecurityOverview'}}}}
+        '401': {$ref: '#/components/responses/Problem'}
+  /api/v1/users/me/phone-change-challenges:
+    post:
+      summary: Send a verification code to a proposed replacement mobile
+      security: [{minipayOAuth: [identity.profile.write]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/RequestId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PhoneChangeChallengeRequest'}}}}
+      responses:
+        '202': {description: Challenge accepted, content: {application/json: {schema: {$ref: '#/components/schemas/AccountSecurityChallenge'}}}}
+        '409': {$ref: '#/components/responses/Problem'}
+        '423': {$ref: '#/components/responses/Problem'}
+        '429': {$ref: '#/components/responses/Problem'}
+  /api/v1/users/me/phone:
+    put:
+      summary: Confirm a verified mobile replacement and revoke every refresh-token family
+      security: [{minipayOAuth: [identity.profile.write]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/RequestId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AccountSecurityCodeRequest'}}}}
+      responses:
+        '204': {description: Mobile changed and refresh sessions revoked}
+        '409': {$ref: '#/components/responses/Problem'}
+        '422': {$ref: '#/components/responses/Problem'}
+  /api/v1/users/me/email-verification-challenges:
+    post:
+      summary: Send a verification code for binding or replacing an email address
+      security: [{minipayOAuth: [identity.profile.write]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/RequestId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/EmailVerificationChallengeRequest'}}}}
+      responses:
+        '202': {description: Challenge accepted, content: {application/json: {schema: {$ref: '#/components/schemas/AccountSecurityChallenge'}}}}
+        '423': {$ref: '#/components/responses/Problem'}
+        '429': {$ref: '#/components/responses/Problem'}
+        '503': {$ref: '#/components/responses/Problem'}
+  /api/v1/users/me/email:
+    put:
+      summary: Confirm a verified email binding or replacement
+      security: [{minipayOAuth: [identity.profile.write]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/RequestId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AccountSecurityCodeRequest'}}}}
+      responses:
+        '204': {description: Email bound}
+        '409': {$ref: '#/components/responses/Problem'}
+        '422': {$ref: '#/components/responses/Problem'}
+    delete:
+      summary: Remove the authenticated consumer's verified email
+      security: [{minipayOAuth: [identity.profile.write]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/RequestId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      responses:
+        '204': {description: Email absent after the operation}
+        '409': {$ref: '#/components/responses/Problem'}
+  /api/v1/users/me/payment-password-change-challenges:
+    post:
+      summary: Verify the current mobile before changing an existing payment password
+      description: The complete current mobile is transient and must match the authenticated account's HMAC.
+      security: [{minipayOAuth: [identity.profile.write]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/RequestId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/CurrentMobileDeviceRequest'}}}}
+      responses:
+        '202': {description: Challenge accepted, content: {application/json: {schema: {$ref: '#/components/schemas/AccountSecurityChallenge'}}}}
+        '422': {$ref: '#/components/responses/Problem'}
+        '423': {$ref: '#/components/responses/Problem'}
+        '429': {$ref: '#/components/responses/Problem'}
+  /api/v1/users/me/payment-password-change-challenges/{challengeId}/verifications:
+    post:
+      summary: Exchange a valid current-mobile code for a five-minute single-use verification credential
+      security: [{minipayOAuth: [identity.profile.write]}]
+      x-minipay-audience: consumer-api
+      parameters:
+        - {name: challengeId, in: path, required: true, schema: {type: string, format: uuid}}
+        - {$ref: '#/components/parameters/RequestId'}
+        - {$ref: '#/components/parameters/IdempotencyKey'}
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PaymentPasswordCodeVerificationRequest'}}}}
+      responses:
+        '200': {description: Verification credential, content: {application/json: {schema: {$ref: '#/components/schemas/PaymentPasswordVerification'}}}}
+        '403': {$ref: '#/components/responses/Problem'}
+        '422': {$ref: '#/components/responses/Problem'}
+  /api/v1/users/me/payment-password-changes:
+    post:
+      summary: Consume a bound verification credential and replace an existing payment password
+      security: [{minipayOAuth: [identity.profile.write]}]
+      x-minipay-audience: consumer-api
+      parameters: [{$ref: '#/components/parameters/RequestId'}, {$ref: '#/components/parameters/IdempotencyKey'}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/PaymentPasswordChangeRequest'}}}}
+      responses:
+        '204': {description: Payment password changed; OAuth session remains valid}
+        '403': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+        '422': {$ref: '#/components/responses/Problem'}
+  /internal/v1/payment-authorizations/verify-and-consume:
+    post:
+      summary: Verify a bound one-time authorization for a trusted Payment service
+      security: [{minipayOAuth: [identity.payment-authorization.verify]}]
+      x-minipay-audience: identity-internal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/VerifyPaymentAuthorizationRequest'}
+      responses:
+        '200':
+          description: Verified and consumed idempotently for the same subject
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [authorizationId, valid]
+                properties:
+                  authorizationId: {type: string, format: uuid}
+                  valid: {type: boolean, const: true}
+        '422': {$ref: '#/components/responses/Problem'}
+  /internal/v1/consumer-payment-profiles/{userId}:
+    get:
+      summary: Read the minimum safe collection-recipient display profile for Payment
+      security: [{minipayOAuth: [identity.consumer-payment-profile.read]}]
+      x-minipay-audience: identity-internal
+      parameters:
+        - {name: userId, in: path, required: true, schema: {type: string, format: uuid}}
+      responses:
+        '200': {description: Safe recipient display profile, content: {application/json: {schema: {$ref: '#/components/schemas/ConsumerPaymentProfile'}}}}
+        '404': {$ref: '#/components/responses/Problem'}
+  /internal/v1/consumer-payment-profiles:
+    get:
+      summary: Batch read minimal safe consumer display profiles for Wallet
+      security: [{minipayOAuth: [identity.consumer-payment-profile.read]}]
+      x-minipay-audience: identity-internal
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema: {type: array, minItems: 1, maxItems: 20, items: {type: string, format: uuid}}
+          style: form
+          explode: true
+      responses:
+        '200': {description: Safe profiles, content: {application/json: {schema: {type: array, maxItems: 20, items: {$ref: '#/components/schemas/ConsumerPaymentProfile'}}}}}
+        '400': {$ref: '#/components/responses/Problem'}
+  /internal/v1/accounts/merchant-owner:
+    post:
+      summary: Resolve a merchant owner account by mobile (find existing or create SMS-only)
+      security: [{minipayOAuth: [identity.account.manage]}]
+      x-minipay-audience: identity-internal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [mobile, requestId]
+              properties:
+                mobile: {type: string, pattern: '^1[3-9]\d{9}$'}
+                displayName: {type: string, maxLength: 64}
+                requestId: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        '200':
+          description: Merchant owner account resolved (existing or newly created)
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/MerchantOwnerResolution'}
+        '400': {$ref: '#/components/responses/Problem'}
+        '409': {$ref: '#/components/responses/Problem'}
+components:
+  securitySchemes:
+    delegatedBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    agentClientBasic:
+      type: http
+      scheme: basic
+    minipayOAuth:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: http://localhost:8081/oauth2/authorize
+          tokenUrl: http://localhost:8081/oauth2/token
+          scopes:
+            identity.profile.read: Read the authenticated consumer profile
+            identity.payment-authorization.write: Issue a one-time payment authorization
+            identity.payment-authorization.verify: Verify a payment authorization
+            identity.consumer-payment-profile.read: Read a collection recipient's safe display profile
+            identity.profile.write: Initialize the authenticated consumer profile
+            identity.account.manage: Resolve and manage accounts for trusted internal services
+  parameters:
+    RequestId: {name: X-Request-Id, in: header, required: true, schema: {type: string, minLength: 1, maxLength: 128}}
+    IdempotencyKey: {name: Idempotency-Key, in: header, required: true, schema: {type: string, minLength: 16, maxLength: 128}}
+  schemas:
+    AgentTokenExchangeRequest:
+      type: object
+      additionalProperties: false
+      required: [grant_type, subject_token, subject_token_type, requested_token_type, audience, scope, purpose, run_id]
+      properties:
+        grant_type: {type: string, const: 'urn:ietf:params:oauth:grant-type:token-exchange'}
+        subject_token: {type: string, minLength: 1, writeOnly: true}
+        subject_token_type: {type: string, const: 'urn:ietf:params:oauth:token-type:access_token'}
+        requested_token_type: {type: string, const: 'urn:ietf:params:oauth:token-type:access_token'}
+        audience:
+          type: string
+          enum: [agent-internal, identity-internal, wallet-internal, payment-internal, commerce-internal]
+        scope: {type: string, minLength: 1}
+        purpose: {type: string, pattern: '^[A-Z][A-Z0-9_]{2,63}$'}
+        run_id: {type: string, format: uuid}
+    OAuthTokenExchangeResponse:
+      type: object
+      required: [access_token, issued_token_type, token_type, expires_in, scope]
+      properties:
+        access_token: {type: string, writeOnly: true}
+        issued_token_type: {type: string, const: 'urn:ietf:params:oauth:token-type:access_token'}
+        token_type: {type: string, const: Bearer}
+        expires_in: {type: integer, minimum: 1, maximum: 120}
+        scope: {type: string}
+    ResolveTransferRecipientRequest:
+      type: object
+      additionalProperties: false
+      required: [mobile]
+      properties:
+        mobile: {type: string, pattern: '^1[3-9]\d{9}$', writeOnly: true}
+    ResolveExactFriendRequest:
+      type: object
+      additionalProperties: false
+      required: [query]
+      properties:
+        query: {type: string, minLength: 1, maxLength: 64, writeOnly: true}
+    ExactFriendRecipient:
+      type: object
+      additionalProperties: false
+      required: [recipientUserId, nickname, phoneMasked, verified, nicknameMatched, legalNameMatched]
+      properties:
+        recipientUserId: {type: string, format: uuid}
+        nickname: {type: string, minLength: 1, maxLength: 20}
+        phoneMasked: {type: string}
+        legalNameMasked: {type: [string, 'null']}
+        verified: {type: boolean}
+        nicknameMatched: {type: boolean}
+        legalNameMatched: {type: boolean}
+    TransferRecipient:
+      type: object
+      additionalProperties: false
+      required: [recipientUserId, nickname, phoneMasked, verified]
+      properties:
+        recipientUserId: {type: string, format: uuid}
+        nickname: {type: string, minLength: 2, maxLength: 20}
+        phoneMasked: {type: string, pattern: '^1[3-9]\d\*{4}\d{4}$'}
+        legalNameMasked: {type: string, nullable: true}
+        avatarUrl: {type: string, format: uri, nullable: true}
+        verified: {type: boolean}
+    ConsumerCodeSendRequest:
+      type: object
+      additionalProperties: false
+      required: [mobile, purpose]
+      properties:
+        mobile: {type: string, pattern: '^1[3-9]\d{9}$'}
+        purpose: {type: string, const: LOGIN}
+    ConsumerCodeChallenge:
+      type: object
+      additionalProperties: false
+      required: [challengeId, maskedMobile, expiresAt, resendAfterSeconds]
+      properties:
+        challengeId: {type: string, format: uuid}
+        maskedMobile: {type: string}
+        expiresAt: {type: string, format: date-time}
+        resendAfterSeconds: {type: integer, minimum: 1}
+    ConsumerCodeVerifyRequest:
+      type: object
+      additionalProperties: false
+      required: [challengeId, code, clientId, redirectUri, codeChallenge, codeChallengeMethod, deviceId]
+      properties:
+        challengeId: {type: string, format: uuid}
+        code: {type: string, pattern: '^\d{6}$', writeOnly: true}
+        clientId: {type: string, const: minipay-android}
+        redirectUri: {type: string}
+        codeChallenge: {type: string, minLength: 43, maxLength: 128}
+        codeChallengeMethod: {type: string, const: S256}
+        deviceId: {type: string, minLength: 1, maxLength: 128}
+    ConsumerAuthorizationCode:
+      type: object
+      additionalProperties: false
+      required: [authorizationCode, expiresAt, payPasswordSet, onboardingRequired, realNameStatus, realNameVerified]
+      properties:
+        authorizationCode: {type: string, writeOnly: true}
+        expiresAt: {type: string, format: date-time}
+        payPasswordSet: {type: boolean}
+        onboardingRequired: {type: boolean}
+        realNameStatus: {type: string, enum: [UNVERIFIED, PROCESSING, VERIFIED, REJECTED]}
+        realNameVerified: {type: boolean}
+    PaymentAuthorizationRequest:
+      type: object
+      additionalProperties: false
+      required: [subjectType, subjectId, amountCent, deviceId, payPassword]
+      properties:
+        subjectType: {type: string, enum: [TRANSFER_INTENT, PAYMENT_ORDER, WITHDRAWAL_ORDER, RECHARGE_ORDER, BANK_CARD_BALANCE_QUERY]}
+        subjectId: {type: string, format: uuid}
+        amountCent:
+          type: integer
+          minimum: 0
+          maximum: 1000000
+          description: Must be 0 only for BANK_CARD_BALANCE_QUERY; all funding subjects require at least 1.
+        deviceId: {type: string, minLength: 1, maxLength: 128}
+        payPassword: {type: string, pattern: '^\d{6}$', writeOnly: true}
+    PaymentAuthorization:
+      type: object
+      required: [authorizationId, paymentAuthToken, expiresAt]
+      properties:
+        authorizationId: {type: string, format: uuid}
+        paymentAuthToken: {type: string, writeOnly: true}
+        expiresAt: {type: string, format: date-time}
+    VerifyPaymentAuthorizationRequest:
+      type: object
+      additionalProperties: false
+      required: [paymentAuthToken, userId, subjectType, subjectId, amountCent, deviceId]
+      properties:
+        paymentAuthToken: {type: string, writeOnly: true}
+        userId: {type: string, format: uuid}
+        subjectType: {type: string, enum: [TRANSFER_INTENT, PAYMENT_ORDER, WITHDRAWAL_ORDER, RECHARGE_ORDER, BANK_CARD_BALANCE_QUERY]}
+        subjectId: {type: string, format: uuid}
+        amountCent: {type: integer, minimum: 0, maximum: 1000000}
+        deviceId: {type: string, minLength: 1, maxLength: 128}
+    MerchantOwnerResolution:
+      type: object
+      additionalProperties: false
+      required: [userId, loginName, newlyCreated]
+      properties:
+        userId: {type: string, format: uuid}
+        loginName: {type: string}
+        newlyCreated: {type: boolean}
+    ConsumerOnboardingRequest:
+      type: object
+      additionalProperties: false
+      required: [nickname]
+      properties:
+        nickname: {type: string, minLength: 2, maxLength: 20}
+        avatarUploadId: {type: string, format: uuid}
+    SetPaymentPasswordRequest:
+      type: object
+      additionalProperties: false
+      required: [paymentPassword]
+      properties:
+        paymentPassword: {type: string, pattern: '^\d{6}$', writeOnly: true}
+    ConsumerCapabilities:
+      type: object
+      additionalProperties: false
+      required: [onboardingCompleted, realNameStatus, realNameVerified, payPasswordSet]
+      properties:
+        onboardingCompleted: {type: boolean}
+        realNameStatus: {type: string, enum: [UNVERIFIED, PROCESSING, VERIFIED, REJECTED]}
+        realNameVerified: {type: boolean}
+        payPasswordSet: {type: boolean}
+    AccountSecurityOverview:
+      type: object
+      additionalProperties: false
+      required: [maskedMobile, maskedEmail, paymentPasswordSet]
+      properties:
+        maskedMobile: {type: string}
+        maskedEmail: {type: [string, 'null']}
+        paymentPasswordSet: {type: boolean}
+    AccountSecurityChallenge:
+      type: object
+      additionalProperties: false
+      required: [challengeId, maskedTarget, expiresAt, resendAfterSeconds]
+      properties:
+        challengeId: {type: string, format: uuid}
+        maskedTarget: {type: string}
+        expiresAt: {type: string, format: date-time}
+        resendAfterSeconds: {type: integer, format: int64, minimum: 0}
+    PhoneChangeChallengeRequest:
+      type: object
+      additionalProperties: false
+      required: [mobile]
+      properties:
+        mobile: {type: string, pattern: '^1[3-9]\d{9}$', writeOnly: true}
+    EmailVerificationChallengeRequest:
+      type: object
+      additionalProperties: false
+      required: [email]
+      properties:
+        email: {type: string, format: email, maxLength: 254, writeOnly: true}
+    AccountSecurityCodeRequest:
+      type: object
+      additionalProperties: false
+      required: [challengeId, code]
+      properties:
+        challengeId: {type: string, format: uuid}
+        code: {type: string, pattern: '^\d{6}$', writeOnly: true}
+    CurrentMobileDeviceRequest:
+      type: object
+      additionalProperties: false
+      required: [mobile, deviceId]
+      properties:
+        mobile: {type: string, pattern: '^1[3-9]\d{9}$', writeOnly: true}
+        deviceId: {type: string, minLength: 1, maxLength: 128}
+    PaymentPasswordCodeVerificationRequest:
+      type: object
+      additionalProperties: false
+      required: [code, deviceId]
+      properties:
+        code: {type: string, pattern: '^\d{6}$', writeOnly: true}
+        deviceId: {type: string, minLength: 1, maxLength: 128}
+    PaymentPasswordVerification:
+      type: object
+      additionalProperties: false
+      required: [verificationToken, expiresAt]
+      properties:
+        verificationToken: {type: string, writeOnly: true}
+        expiresAt: {type: string, format: date-time}
+    PaymentPasswordChangeRequest:
+      type: object
+      additionalProperties: false
+      required: [verificationToken, newPassword, deviceId]
+      properties:
+        verificationToken: {type: string, writeOnly: true}
+        newPassword: {type: string, pattern: '^\d{6}$', writeOnly: true}
+        deviceId: {type: string, minLength: 1, maxLength: 128}
+    RealNameVerificationRequest:
+      type: object
+      required: [legalName, idNumber, faceImage]
+      properties:
+        legalName: {type: string, minLength: 2, maxLength: 64, writeOnly: true}
+        idNumber: {type: string, pattern: '^[1-9]\d{16}[0-9Xx]$', writeOnly: true}
+        faceImage: {type: string, format: binary, contentMediaType: image/jpeg, writeOnly: true}
+    RealNameVerification:
+      type: object
+      required: [verificationId, status, legalNameMasked, idNumberMasked, provider]
+      properties:
+        verificationId: {type: string, format: uuid}
+        status: {type: string, enum: [PROCESSING, VERIFIED, REJECTED]}
+        legalNameMasked: {type: string}
+        idNumberMasked: {type: string}
+        provider: {type: string, enum: [disabled, sandbox, aliyun]}
+        failureCode: {type: string}
+        verifiedAt: {type: string, format: date-time}
+    ConsumerOnboardingResponse:
+      type: object
+      additionalProperties: false
+      required: [userId, nickname, payPasswordSet, onboardingCompleted]
+      properties:
+        userId: {type: string, format: uuid}
+        nickname: {type: string}
+        payPasswordSet: {type: boolean}
+        onboardingCompleted: {type: boolean}
+    ConsumerProfile:
+      type: object
+      additionalProperties: false
+      required: [userId, nickname, payPasswordSet, onboardingCompleted]
+      properties:
+        userId: {type: string, format: uuid}
+        nickname: {type: string}
+        avatarObjectKey: {type: string}
+        payPasswordSet: {type: boolean}
+        onboardingCompleted: {type: boolean}
+    ProfileView:
+      type: object
+      additionalProperties: false
+      required: [userId, nickname, miniPayNo, version]
+      properties:
+        userId: {type: string, format: uuid}
+        nickname: {type: string, minLength: 2, maxLength: 20}
+        miniPayNo: {type: string, maxLength: 32}
+        avatarUrl: {type: string, format: uri}
+        avatarUrlExpiresAt: {type: string, format: date-time}
+        version: {type: integer, format: int64, minimum: 0}
+    ConsumerPaymentProfile:
+      type: object
+      additionalProperties: false
+      required: [userId, nickname]
+      properties:
+        userId: {type: string, format: uuid}
+        nickname: {type: string, minLength: 2, maxLength: 20}
+        avatarUrl: {type: string, format: uri, nullable: true}
+        avatarUrlExpiresAt: {type: string, format: date-time, nullable: true}
+        legalNameMasked: {type: string, nullable: true}
+    AvatarUploadRequest:
+      type: object
+      additionalProperties: false
+      required: [contentType, sizeBytes, sha256]
+      properties:
+        contentType: {type: string, enum: [image/jpeg, image/png, image/webp]}
+        sizeBytes: {type: integer, format: int64, minimum: 1, maximum: 5242880}
+        sha256: {type: string, pattern: '^[a-fA-F0-9]{64}$'}
+    AvatarUploadGrant:
+      type: object
+      additionalProperties: false
+      required: [uploadId, uploadUrl, requiredHeaders, expiresAt]
+      properties:
+        uploadId: {type: string, format: uuid}
+        uploadUrl: {type: string, format: uri}
+        requiredHeaders: {type: object, additionalProperties: {type: string}}
+        expiresAt: {type: string, format: date-time}
+    UpdateProfileRequest:
+      type: object
+      additionalProperties: false
+      required: [nickname, version]
+      properties:
+        nickname: {type: string, minLength: 2, maxLength: 20}
+        avatarUploadId: {type: string, format: uuid}
+        version: {type: integer, format: int64, minimum: 0}
+    Problem: {$ref: './components/problem-details-v1.yaml#/components/schemas/ProblemDetails'}
+  responses:
+    Problem: {description: Problem Details, content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
