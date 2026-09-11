@@ -1,0 +1,85 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: minipay
+
+resources:
+  - ../../base
+  - gateway.yaml
+  - cluster-issuer.yaml
+  - certificate.yaml
+
+components:
+  - private/digests
+
+configMapGenerator:
+  - name: minipay-environment
+    envs: [runtime.env]
+
+secretGenerator:
+  - {name: identity-runtime, envs: [private/identity.env]}
+  - name: identity-jwt
+    files: [jwt-private.pem=private/jwt-private.pem, jwt-public.pem=private/jwt-public.pem]
+  - {name: wallet-runtime, envs: [private/wallet.env]}
+  - {name: payment-runtime, envs: [private/payment.env]}
+  - {name: commerce-runtime, envs: [private/commerce.env]}
+  - {name: agent-runtime, envs: [private/agent.env]}
+  - {name: consumer-bff-runtime, envs: [private/consumer-bff.env]}
+  - {name: management-bff-runtime, envs: [private/management-bff.env]}
+  - {name: admin-bff-runtime, envs: [private/admin-bff.env]}
+  - {name: yshop-runtime, envs: [private/yshop.env]}
+
+patches:
+  - target: {kind: Deployment}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/imagePullSecrets
+        value: [{name: dockerhub-pull}]
+  - target: {kind: Deployment, name: consumer-bff}
+    patch: |-
+      - {op: replace, path: /spec/template/spec/containers/0/env/0/value, value: __Host-minipay-consumer}
+  - target: {kind: Deployment, name: management-bff}
+    patch: |-
+      - {op: replace, path: /spec/template/spec/containers/0/env/0/value, value: __Host-minipay-management}
+  - target: {kind: Deployment, name: admin-bff}
+    patch: |-
+      - {op: replace, path: /spec/template/spec/containers/0/env/0/value, value: __Host-minipay-admin}
+  - target: {kind: HTTPRoute, name: identity-public}
+    patch: |-
+      - {op: replace, path: /spec/hostnames/0, value: identity.su46proj.site}
+      - {op: replace, path: /spec/parentRefs/0/sectionName, value: https}
+  - target: {kind: HTTPRoute, name: payment-public}
+    patch: |-
+      - {op: replace, path: /spec/hostnames/0, value: payment.su46proj.site}
+      - {op: replace, path: /spec/parentRefs/0/sectionName, value: https}
+  - target: {kind: HTTPRoute, name: wallet-public}
+    patch: |-
+      - {op: replace, path: /spec/hostnames/0, value: wallet.su46proj.site}
+      - {op: replace, path: /spec/parentRefs/0/sectionName, value: https}
+  - target: {kind: HTTPRoute, name: agent-public}
+    patch: |-
+      - {op: replace, path: /spec/hostnames/0, value: agent.su46proj.site}
+      - {op: replace, path: /spec/parentRefs/0/sectionName, value: https}
+  - target: {kind: HTTPRoute, name: commerce-public}
+    patch: |-
+      - {op: replace, path: /spec/hostnames/0, value: commerce.su46proj.site}
+      - {op: replace, path: /spec/parentRefs/0/sectionName, value: https}
+  - target: {kind: HTTPRoute, name: merchant-web}
+    patch: |-
+      - {op: replace, path: /spec/hostnames/0, value: merchant.su46proj.site}
+      - {op: replace, path: /spec/parentRefs/0/sectionName, value: https}
+  - target: {kind: HTTPRoute, name: ops-web}
+    patch: |-
+      - {op: replace, path: /spec/hostnames/0, value: ops.su46proj.site}
+      - {op: replace, path: /spec/parentRefs/0/sectionName, value: https}
+  - target: {kind: HTTPRoute, name: admin-web}
+    patch: |-
+      - {op: replace, path: /spec/hostnames/0, value: admin.su46proj.site}
+      - {op: replace, path: /spec/parentRefs/0/sectionName, value: https}
+  - target: {kind: HTTPRoute, name: yshop-food}
+    patch: |-
+      - {op: replace, path: /spec/hostnames/0, value: food.su46proj.site}
+      - {op: replace, path: /spec/parentRefs/0/sectionName, value: https}
+  - target: {kind: HTTPRoute, name: yshop-admin}
+    patch: |-
+      - {op: replace, path: /spec/hostnames/0, value: food-admin.su46proj.site}
+      - {op: replace, path: /spec/parentRefs/0/sectionName, value: https}

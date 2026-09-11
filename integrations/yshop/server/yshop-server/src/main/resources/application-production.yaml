@@ -1,0 +1,122 @@
+server:
+  port: ${YSHOP_SERVER_PORT:48080}
+  forward-headers-strategy: framework
+
+spring:
+  autoconfigure:
+    exclude:
+      - de.codecentric.boot.admin.server.config.AdminServerAutoConfiguration
+      - de.codecentric.boot.admin.server.ui.config.AdminServerUiAutoConfiguration
+      - de.codecentric.boot.admin.client.config.SpringBootAdminClientAutoConfiguration
+  datasource:
+    druid:
+      web-stat-filter:
+        enabled: false
+      stat-view-servlet:
+        enabled: false
+    dynamic:
+      primary: master
+      strict: true
+      datasource:
+        master:
+          url: ${YSHOP_MYSQL_URL}
+          username: ${YSHOP_MYSQL_USERNAME}
+          password: ${YSHOP_MYSQL_PASSWORD}
+        slave:
+          lazy: true
+          url: ${YSHOP_MYSQL_URL}
+          username: ${YSHOP_MYSQL_USERNAME}
+          password: ${YSHOP_MYSQL_PASSWORD}
+  data:
+    redis:
+      host: ${YSHOP_REDIS_HOST}
+      port: ${YSHOP_REDIS_PORT:6379}
+      password: ${YSHOP_REDIS_PASSWORD}
+      database: 0
+  rabbitmq:
+    host: ${YSHOP_RABBITMQ_HOST}
+    port: ${YSHOP_RABBITMQ_PORT:5672}
+    username: ${YSHOP_RABBITMQ_USERNAME}
+    password: ${YSHOP_RABBITMQ_PASSWORD}
+  quartz:
+    auto-startup: true
+    scheduler-name: yshop-production
+    job-store-type: jdbc
+    wait-for-jobs-to-complete-on-shutdown: true
+    jdbc:
+      initialize-schema: never
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+knife4j:
+  enable: false
+
+management:
+  endpoints:
+    web:
+      base-path: /actuator
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+logging:
+  level:
+    root: INFO
+    co.yixiang.yshop: INFO
+
+yshop:
+  minipay:
+    tenant-id: ${YSHOP_MINIPAY_TENANT_ID}
+    hmac-secret: ${YSHOP_MINIPAY_HMAC_SECRET}
+    commerce-base-url: ${MINIPAY_COMMERCE_INTERNAL_URL}
+    h5-origin: ${YSHOP_MINIPAY_H5_ORIGIN}
+    avatar-allowed-hosts: ${YSHOP_MINIPAY_AVATAR_ALLOWED_HOSTS}
+    amap-reverse-geocode-key: ${YSHOP_MINIPAY_AMAP_WEB_KEY}
+    allow-generic-address: false
+  captcha:
+    enable: true
+  security:
+    mock-enable: false
+  xss:
+    enable: true
+  pay:
+    order-notify-url: ${YSHOP_ORDER_NOTIFY_URL}
+    refund-notify-url: ${YSHOP_REFUND_NOTIFY_URL}
+  access-log:
+    enable: true
+  demo: false
+  h5: ${YSHOP_MINIPAY_H5_ORIGIN}
+
+justauth:
+  # ⚠️ 必须为 true：AppAuthController 强依赖 com.xingyuv.justauth.AuthRequestFactory，
+  # 设为 false 会导致启动直接 APPLICATION FAILED TO START（local/dev 均为 true）。
+  # 若确实要关闭社交登录，应给 AppAuthController 加 @ConditionalOnProperty，而不是关掉这个开关。
+  enabled: true
+
+# ⚠️ wx 段为必填：yshop-module-mp 的自动配置会实例化 WxMpService / WxMaService，
+# 缺少 app-id 时启动即报 "appid不能设置为null"（local/dev 均有此段）。
+# 这里刻意 **不提供默认值** —— 缺失即启动失败，避免静默使用假 appid
+# （AGENTS.md：密钥必须来自环境变量/Secret，本地默认值只能存在于演示配置）。
+# 若不使用微信功能，由部署方注入占位值并在管理端隐藏相关菜单。
+wx:
+  mp: # 公众号配置
+    app-id: ${WX_MP_APP_ID}
+    secret: ${WX_MP_SECRET}
+    config-storage:
+      type: RedisTemplate # 采用 RedisTemplate 操作 Redis，自动从 Spring 获取
+      key-prefix: wx
+      http-client-type: HttpClient
+  miniapp: # 小程序配置
+    appid: ${WX_MINIAPP_APPID}
+    secret: ${WX_MINIAPP_SECRET}
+    config-storage:
+      type: RedisTemplate
+      key-prefix: wa
+      http-client-type: HttpClient

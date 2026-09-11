@@ -1,0 +1,65 @@
+﻿apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: minipay
+resources:
+  - ../../base
+
+# 由 scripts/k3s/pin-image-digests.ps1 生成：把所有自建镜像固定到 registry digest。
+# 生产部署应使用本 overlay，保证「同一清单永远拉到同一镜像」。
+patches:
+  - path: admin-bff-image.json
+    target:
+      kind: Deployment
+      name: admin-bff
+  - path: admin-web-image.json
+    target:
+      kind: Deployment
+      name: admin-web
+  - path: agent-service-image.json
+    target:
+      kind: Deployment
+      name: agent-service
+  - path: commerce-service-image.json
+    target:
+      kind: Deployment
+      name: commerce-service
+  - path: consumer-bff-image.json
+    target:
+      kind: Deployment
+      name: consumer-bff
+  - path: identity-service-image.json
+    target:
+      kind: Deployment
+      name: identity-service
+  - path: management-bff-image.json
+    target:
+      kind: Deployment
+      name: management-bff
+  - path: merchant-web-image.json
+    target:
+      kind: Deployment
+      name: merchant-web
+  - path: ops-web-image.json
+    target:
+      kind: Deployment
+      name: ops-web
+  - path: payment-service-image.json
+    target:
+      kind: Deployment
+      name: payment-service
+  - path: wallet-service-image.json
+    target:
+      kind: Deployment
+      name: wallet-service
+  - path: yshop-admin-web-image.json
+    target:
+      kind: Deployment
+      name: yshop-admin-web
+  - path: yshop-food-h5-image.json
+    target:
+      kind: Deployment
+      name: yshop-food-h5
+  - path: yshop-server-image.json
+    target:
+      kind: Deployment
+      name: yshop-server

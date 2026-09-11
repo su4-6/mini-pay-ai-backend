@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: commerce-service
+  namespace: minipay
+  labels: &labels
+    app.kubernetes.io/name: commerce-service
+    app.kubernetes.io/part-of: minipay
+spec:
+  replicas: 1
+  selector: {matchLabels: {app.kubernetes.io/name: commerce-service}}
+  template:
+    metadata: {labels: *labels}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: commerce-service
+          image: suqihang/commerce-service:0.1.0-k3s.1
+          imagePullPolicy: IfNotPresent
+          ports: [{name: http, containerPort: 8080, protocol: TCP}]
+          env:
+            - name: MYSQL_URL
+              valueFrom: {configMapKeyRef: {name: minipay-environment, key: COMMERCE_MYSQL_URL}}
+            - name: OIDC_ISSUER
+              valueFrom: {configMapKeyRef: {name: minipay-environment, key: IDENTITY_ISSUER}}
+            - name: OIDC_JWK_SET_URI
+              valueFrom: {configMapKeyRef: {name: minipay-runtime, key: IDENTITY_JWK_SET_URI}}
+          envFrom:
+            - configMapRef: {name: minipay-runtime}
+            - configMapRef: {name: minipay-environment}
+            - secretRef: {name: commerce-runtime}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+          startupProbe: {httpGet: {path: /actuator/health/liveness, port: http}, failureThreshold: 30, periodSeconds: 5, timeoutSeconds: 2}
+          readinessProbe: {httpGet: {path: /actuator/health/readiness, port: http}, initialDelaySeconds: 5, periodSeconds: 10, timeoutSeconds: 2, failureThreshold: 3}
+          livenessProbe: {httpGet: {path: /actuator/health/liveness, port: http}, initialDelaySeconds: 10, periodSeconds: 15, timeoutSeconds: 2, failureThreshold: 3}
+          resources: {requests: {cpu: 200m, memory: 384Mi}, limits: {cpu: "1", memory: 1Gi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+      volumes: [{name: tmp, emptyDir: {sizeLimit: 128Mi}}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: commerce-service
+  namespace: minipay
+  labels:
+    app.kubernetes.io/name: commerce-service
+    app.kubernetes.io/part-of: minipay
+spec:
+  type: ClusterIP
+  selector: {app.kubernetes.io/name: commerce-service}
+  ports: [{name: http, port: 8080, targetPort: http, protocol: TCP}]

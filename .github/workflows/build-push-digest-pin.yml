@@ -1,0 +1,94 @@
+name: build-push-digest-pin
+
+# 把 scripts/k3s/ci-pipeline.ps1 的流程接到 CI 系统。
+# 关键约定：
+#   - 所有镜像使用同一个 release 版本号（手动触发或 git tag 推导）
+#   - 推送后记录 digest，并生成 deploy/k3s/overlays/digest-pinned（digest 锁定）
+#   - 生产部署只用 digest-pinned overlay，不再直接用 base
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '镜像版本号（例如 0.1.0-k3s.4）'
+        required: true
+  push:
+    tags:
+      - 'v*'
+
+env:
+  REGISTRY: docker.io
+  NAMESPACE: ${{ github.repository_owner }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 解析版本号
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: 安装 Maven
+        run: sudo apt-get update && sudo apt-get install -y maven
+
+      - name: 登录镜像仓库
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: 构建 8 个 Java/BFF 服务
+        run: |
+          set -e
+          V="${{ steps.ver.outputs.version }}"
+          for m in identity-service wallet-service payment-service commerce-service \
+                   agent-service consumer-bff management-bff admin-bff; do
+            mvn -B -ntp -pl "services/$m" -am -DskipTests package
+            docker build -f docker/k3s-service.Dockerfile \
+              --build-arg "MODULE=services/$m" \
+              -t "$NAMESPACE/$m:$V" .
+          done
+
+      - name: 构建 YShop 后端（Java 17）
+        run: |
+          set -e
+          V="${{ steps.ver.outputs.version }}"
+          sudo apt-get install -y openjdk-17-jdk
+          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+          cd integrations/yshop/server
+          mvn -B -ntp -pl yshop-server -am -DskipTests package
+          cd -
+          docker build -f deploy/k3s/images/yshop-server.Dockerfile \
+            -t "$NAMESPACE/yshop-server:$V" integrations/yshop/server
+
+      - name: 推送并记录 digest
+        run: |
+          set -e
+          V="${{ steps.ver.outputs.version }}"
+          # 先把清单 tag 对齐到本次版本
+          find deploy/k3s/base/workloads -name '*.yaml' -print0 | \
+            xargs -0 sed -i -E "s#(image: *$NAMESPACE/[A-Za-z0-9._-]+):[^[:space:]@]+#\1:$V#g"
+          pwsh -NoProfile -ExecutionPolicy Bypass \
+            -File scripts/k3s/push-and-record-digests.ps1 -Registry "$REGISTRY" -Namespace "$NAMESPACE"
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/k3s/pin-image-digests.ps1
+
+      - name: 校验 digest overlay
+        run: kubectl kustomize deploy/k3s/overlays/digest-pinned > /dev/null
+
+      - name: 归档 digest 清单
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-digests
+          path: deploy/k3s/generated/image-digests.json

@@ -1,5 +1,6 @@
 package com.minipay.agent.infrastructure.client;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -9,6 +10,7 @@ import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.web.client.RestClient;
@@ -23,8 +25,20 @@ public class IdentityProfileClient {
     public IdentityProfileClient(
             @Value("${minipay.agent.profile-identity.base-url}") String baseUrl,
             @Value("${minipay.agent.profile-identity.client-id}") String clientId,
-            @Value("${minipay.agent.profile-identity.client-secret}") String clientSecret) {
-        this.identity = RestClient.builder().baseUrl(baseUrl).build();
+            @Value("${minipay.agent.profile-identity.client-secret}") String clientSecret,
+            @Value("${minipay.agent.profile-identity.connect-timeout-ms:3000}") int connectTimeoutMs,
+            @Value("${minipay.agent.profile-identity.read-timeout-ms:5000}") int readTimeoutMs) {
+        // ⚠️ 必须设置超时。serviceToken() 在 synchronized 块内做阻塞 HTTP 调用：
+        // 一旦 identity 侧变慢或不可达且没有超时，该 monitor 会被长期持有，
+        // 所有会话相关请求线程随之阻塞，最终 Tomcat 线程池耗尽 ——
+        // 现象是健康检查超时、liveness 失败、Pod 反复重启（Exit 137）。
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        requestFactory.setConnectTimeout(Duration.ofMillis(Math.max(500, connectTimeoutMs)));
+        requestFactory.setReadTimeout(Duration.ofMillis(Math.max(500, readTimeoutMs)));
+        this.identity = RestClient.builder()
+                .baseUrl(baseUrl)
+                .requestFactory(requestFactory)
+                .build();
         this.clientId = clientId;
         this.clientSecret = clientSecret;
     }

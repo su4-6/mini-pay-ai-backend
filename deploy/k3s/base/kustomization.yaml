@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: minipay
+
+resources:
+  - namespace.yaml
+  - config/runtime-config.yaml
+  - workloads/identity.yaml
+  - workloads/wallet.yaml
+  - workloads/payment.yaml
+  - workloads/commerce.yaml
+  - workloads/agent.yaml
+  - workloads/consumer-bff.yaml
+  - workloads/management-bff.yaml
+  - workloads/admin-bff.yaml
+  - workloads/merchant-web.yaml
+  - workloads/ops-web.yaml
+  - workloads/admin-web.yaml
+  - workloads/yshop-server.yaml
+  - workloads/yshop-food-h5.yaml
+  - workloads/yshop-admin-web.yaml
+  - routes/public-api-routes.yaml
+  - routes/minipay-web-routes.yaml
+  - routes/yshop-routes.yaml

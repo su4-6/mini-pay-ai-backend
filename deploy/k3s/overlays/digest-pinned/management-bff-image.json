@@ -1,0 +1,1 @@
+[{"op":"replace","path":"/spec/template/spec/containers/0/image","value":"suqihang/management-bff@sha256:3d8ab6a638fde3df69c15704016159c35922c21c89e7994e8ab8e66519decabc"}]

@@ -1,0 +1,39 @@
+# Seata 2.6.0 transaction coordinator, file discovery, database persistence.
+# This is NOT a web console. Only the transaction port 8091 is exposed.
+# Clients in Kubernetes use SEATA_SERVER_ADDR=<reachable-host>:8091.
+server:
+  port: 8091
+spring:
+  application:
+    name: seata-server
+  main:
+    web-application-type: none
+logging:
+  config: classpath:logback-spring.xml
+  file:
+    path: ${log.home:${user.home}/logs/seata}
+seata:
+  config:
+    type: file
+  registry:
+    type: file
+  server:
+    service-port: 8091
+  store:
+    mode: db
+    db:
+      datasource: druid
+      db-type: mysql
+      driver-class-name: com.mysql.cj.jdbc.Driver
+      url: jdbc:mysql://${MYSQL_HOST}:3306/seata?useUnicode=true&rewriteBatchedStatements=true&serverTimezone=UTC
+      user: seata
+      password: ${SEATA_DB_PASSWORD}
+      min-conn: 5
+      max-conn: 30
+      global-table: global_table
+      branch-table: branch_table
+      lock-table: lock_table
+      distributed-lock-table: distributed_lock
+      vgroup-table: vgroup_table
+      query-limit: 100
+      max-wait: 5000

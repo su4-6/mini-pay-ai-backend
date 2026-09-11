@@ -1,0 +1,9 @@
+.git
+.idea
+**/target
+# 例外：k3s 镜像构建需要已打好的可执行 jar（deploy/k3s/images/yshop-server.Dockerfile）
+!yshop-server/target
+yshop-server/target/*
+!yshop-server/target/yshop-server.jar
+**/*.log
+application-my.yaml

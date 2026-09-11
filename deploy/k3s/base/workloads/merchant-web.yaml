@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: merchant-web
+  namespace: minipay
+  labels: &labels
+    app.kubernetes.io/name: merchant-web
+    app.kubernetes.io/part-of: minipay
+spec:
+  replicas: 1
+  selector: {matchLabels: {app.kubernetes.io/name: merchant-web}}
+  template:
+    metadata: {labels: *labels}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 101, runAsGroup: 101, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: merchant-web
+          image: suqihang/merchant-web:0.1.0-k3s.3
+          imagePullPolicy: IfNotPresent
+          ports: [{name: http, containerPort: 8080}]
+          startupProbe: {httpGet: {path: /healthz, port: http}, failureThreshold: 12, periodSeconds: 5}
+          readinessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 10}
+          livenessProbe: {httpGet: {path: /healthz, port: http}, periodSeconds: 20}
+          resources: {requests: {cpu: 25m, memory: 32Mi}, limits: {cpu: 250m, memory: 128Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts: [{name: cache, mountPath: /var/cache/nginx}, {name: run, mountPath: /var/run}]
+      volumes: [{name: cache, emptyDir: {sizeLimit: 32Mi}}, {name: run, emptyDir: {sizeLimit: 8Mi}}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: merchant-web
+  namespace: minipay
+  labels:
+    app.kubernetes.io/name: merchant-web
+    app.kubernetes.io/part-of: minipay
+spec: {type: ClusterIP, selector: {app.kubernetes.io/name: merchant-web}, ports: [{name: http, port: 80, targetPort: http}]}

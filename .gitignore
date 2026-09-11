@@ -9,8 +9,31 @@
 /.env.deploy
 .secrets/
 .local-secrets/
+deploy/k8s/secrets.env
+deploy/k8s/cloudflare-api-token.env
 target/
 **/target/
 .DS_Store
 Thumbs.db
 backend-*.tar.gz
+
+# Local-only K3s migration material and generated private configuration.
+.local-backup/
+deploy/k3s/private/
+deploy/k3s/overlays/*/private/
+deploy/compose-infra/.env.local
+deploy/compose-infra/.env.server
+deploy/k3s/overlays/local/runtime.env
+deploy/k3s/overlays/server/runtime.env
+deploy/compose-infra/generated/
+deploy/k3s/generated/
+
+# 已废弃：瘦身版 yshop 已被正版 integrations/yshop 全量替换（见变更 #22）。
+# 不纳入版本管理，原因有二：一是已无任何活配置引用；二是它内部的
+# yshop-framework 路径超长，会让 `git add` 在 Windows 上以
+# "Filename too long" 直接中断，从而静默漏提交其它文件。
+integrations/yshop-lite/
+
+# 本地调试产物（playwright CLI 日志/快照），不属于源码。
+.playwright-cli/
+output/

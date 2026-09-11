@@ -1,0 +1,189 @@
+name: minipay-infra
+
+services:
+  minipay-mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: "${MINIPAY_MYSQL_ROOT_PASSWORD:?MINIPAY_MYSQL_ROOT_PASSWORD is required}"
+      IDENTITY_DB_USERNAME: "${IDENTITY_DB_USERNAME:?IDENTITY_DB_USERNAME is required}"
+      IDENTITY_DB_PASSWORD: "${IDENTITY_DB_PASSWORD:?IDENTITY_DB_PASSWORD is required}"
+      PAYMENT_DB_USERNAME: "${PAYMENT_DB_USERNAME:?PAYMENT_DB_USERNAME is required}"
+      PAYMENT_DB_PASSWORD: "${PAYMENT_DB_PASSWORD:?PAYMENT_DB_PASSWORD is required}"
+      WALLET_DB_USERNAME: "${WALLET_DB_USERNAME:?WALLET_DB_USERNAME is required}"
+      WALLET_DB_PASSWORD: "${WALLET_DB_PASSWORD:?WALLET_DB_PASSWORD is required}"
+      COMMERCE_DB_USERNAME: "${COMMERCE_DB_USERNAME:?COMMERCE_DB_USERNAME is required}"
+      COMMERCE_DB_PASSWORD: "${COMMERCE_DB_PASSWORD:?COMMERCE_DB_PASSWORD is required}"
+      AGENT_DB_USERNAME: "${AGENT_DB_USERNAME:?AGENT_DB_USERNAME is required}"
+      AGENT_DB_PASSWORD: "${AGENT_DB_PASSWORD:?AGENT_DB_PASSWORD is required}"
+      SEATA_DB_USERNAME: "${SEATA_DB_USERNAME:?SEATA_DB_USERNAME is required}"
+      SEATA_DB_PASSWORD: "${SEATA_DB_PASSWORD:?SEATA_DB_PASSWORD is required}"
+    ports:
+      - "${INFRA_BIND_HOST:-127.0.0.1}:${MINIPAY_MYSQL_HOST_PORT:-13306}:3306"
+    volumes:
+      - minipay-mysql-data:/var/lib/mysql
+      - ./init/minipay-bootstrap.sh:/docker-entrypoint-initdb.d/01-minipay-bootstrap.sh:ro
+      - ../../docker/mysql/core/init/002-seata-schema.sql:/docker-entrypoint-initdb.d/02-seata-schema.sql:ro
+      - ./health/mysql.sh:/opt/minipay/health/mysql.sh:ro
+    networks:
+      - infra
+    healthcheck:
+      test: ["CMD", "sh", "/opt/minipay/health/mysql.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  minipay-redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    environment:
+      MINIPAY_REDIS_PASSWORD: "${MINIPAY_REDIS_PASSWORD:?MINIPAY_REDIS_PASSWORD is required}"
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - "${MINIPAY_REDIS_PASSWORD:?MINIPAY_REDIS_PASSWORD is required}"
+    ports:
+      - "${INFRA_BIND_HOST:-127.0.0.1}:${MINIPAY_REDIS_HOST_PORT:-16379}:6379"
+    volumes:
+      - minipay-redis-data:/data
+    networks:
+      - infra
+    healthcheck:
+      test: ["CMD-SHELL", 'REDISCLI_AUTH="$${MINIPAY_REDIS_PASSWORD}" redis-cli --no-auth-warning ping | grep -qx PONG']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:4.1-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: "${RABBITMQ_USERNAME:?RABBITMQ_USERNAME is required}"
+      RABBITMQ_DEFAULT_PASS: "${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}"
+    ports:
+      - "${INFRA_BIND_HOST:-127.0.0.1}:${RABBITMQ_HOST_PORT:-5672}:5672"
+      - "${INFRA_BIND_HOST:-127.0.0.1}:${RABBITMQ_MANAGEMENT_HOST_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    networks:
+      - infra
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
+  seata-server:
+    image: apache/seata-server:2.6.0
+    restart: unless-stopped
+    depends_on:
+      minipay-mysql:
+        condition: service_healthy
+    environment:
+      MYSQL_HOST: minipay-mysql
+      SEATA_PORT: "8091"
+      STORE_MODE: db
+      SEATA_DB_PASSWORD: "${SEATA_DB_PASSWORD:?SEATA_DB_PASSWORD is required}"
+      # Seata otherwise sizes Xms/Xmx from the whole Docker Desktop VM and can
+      # reserve most of an 8 GiB local engine before the K8s workloads start.
+      JVM_XMS: "${SEATA_JVM_XMS:-256m}"
+      JVM_XMX: "${SEATA_JVM_XMX:-512m}"
+      JVM_MaxDirectMemorySize: "${SEATA_JVM_MAX_DIRECT_MEMORY_SIZE:-256m}"
+    ports:
+      - "${INFRA_BIND_HOST:-127.0.0.1}:${SEATA_SERVICE_HOST_PORT:-8091}:8091"
+    volumes:
+      - ./seata/application.yml:/seata-server/resources/application.yml:ro
+    networks:
+      - infra
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/minipay-mysql/3306 && exec 4<>/dev/tcp/127.0.0.1/8091' 2>/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 45s
+
+  yshop-mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: "${YSHOP_MYSQL_DATABASE:?YSHOP_MYSQL_DATABASE is required}"
+      MYSQL_USER: "${YSHOP_MYSQL_USERNAME:?YSHOP_MYSQL_USERNAME is required}"
+      MYSQL_PASSWORD: "${YSHOP_MYSQL_PASSWORD:?YSHOP_MYSQL_PASSWORD is required}"
+      MYSQL_ROOT_PASSWORD: "${YSHOP_MYSQL_ROOT_PASSWORD:?YSHOP_MYSQL_ROOT_PASSWORD is required}"
+    ports:
+      - "${INFRA_BIND_HOST:-127.0.0.1}:${YSHOP_MYSQL_HOST_PORT:-13307}:3306"
+    volumes:
+      - yshop-mysql-data:/var/lib/mysql
+      - ./health/mysql.sh:/opt/minipay/health/mysql.sh:ro
+    networks:
+      - infra
+    healthcheck:
+      test: ["CMD", "sh", "/opt/minipay/health/mysql.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 45s
+
+  yshop-redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    environment:
+      YSHOP_REDIS_PASSWORD: "${YSHOP_REDIS_PASSWORD:?YSHOP_REDIS_PASSWORD is required}"
+    command:
+      - redis-server
+      - --appendonly
+      - "yes"
+      - --requirepass
+      - "${YSHOP_REDIS_PASSWORD:?YSHOP_REDIS_PASSWORD is required}"
+    ports:
+      - "${INFRA_BIND_HOST:-127.0.0.1}:${YSHOP_REDIS_HOST_PORT:-16380}:6379"
+    volumes:
+      - yshop-redis-data:/data
+    networks:
+      - infra
+    healthcheck:
+      test: ["CMD-SHELL", 'REDISCLI_AUTH="$${YSHOP_REDIS_PASSWORD}" redis-cli --no-auth-warning ping | grep -qx PONG']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  coturn:
+    image: coturn/coturn:4.6.3-alpine
+    profiles:
+      - voice
+    restart: unless-stopped
+    command:
+      - --no-cli
+      - --fingerprint
+      - --use-auth-secret
+      - "--static-auth-secret=${TURN_SHARED_SECRET:?TURN_SHARED_SECRET is required}"
+      - "--realm=${TURN_REALM:?TURN_REALM is required}"
+      - "--external-ip=${TURN_EXTERNAL_IP:?TURN_EXTERNAL_IP is required}"
+      - --min-port=49160
+      - --max-port=49200
+    ports:
+      - "${TURN_BIND_HOST:-127.0.0.1}:3478:3478/tcp"
+      - "${TURN_BIND_HOST:-127.0.0.1}:3478:3478/udp"
+      - "${TURN_BIND_HOST:-127.0.0.1}:49160-49200:49160-49200/udp"
+    networks:
+      - infra
+
+networks:
+  infra:
+    name: minipay-infra
+
+volumes:
+  minipay-mysql-data:
+    name: minipay-infra-mysql-data
+  minipay-redis-data:
+    name: minipay-infra-redis-data
+  rabbitmq-data:
+    name: minipay-infra-rabbitmq-data
+  yshop-mysql-data:
+    name: minipay-infra-yshop-mysql-data
+  yshop-redis-data:
+    name: minipay-infra-yshop-redis-data

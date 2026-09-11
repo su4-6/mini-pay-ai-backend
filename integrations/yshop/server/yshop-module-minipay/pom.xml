@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>co.yixiang.boot</groupId>
+        <artifactId>yshop</artifactId>
+        <version>${revision}</version>
+    </parent>
+    <artifactId>yshop-module-minipay</artifactId>
+    <packaging>jar</packaging>
+    <name>${project.artifactId}</name>
+    <description>MiniPay food integration boundary</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>co.yixiang.boot</groupId>
+            <artifactId>yshop-module-order-biz</artifactId>
+            <version>${revision}</version>
+        </dependency>
+        <dependency>
+            <groupId>co.yixiang.boot</groupId>
+            <artifactId>yshop-module-member-biz</artifactId>
+            <version>${revision}</version>
+        </dependency>
+        <dependency>
+            <groupId>co.yixiang.boot</groupId>
+            <artifactId>yshop-module-infra-api</artifactId>
+            <version>${revision}</version>
+        </dependency>
+        <dependency>
+            <groupId>co.yixiang.boot</groupId>
+            <artifactId>yshop-spring-boot-starter-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>co.yixiang.boot</groupId>
+            <artifactId>yshop-spring-boot-starter-security</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>co.yixiang.boot</groupId>
+            <artifactId>yshop-spring-boot-starter-mybatis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>co.yixiang.boot</groupId>
+            <artifactId>yshop-spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

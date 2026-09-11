@@ -1,0 +1,22 @@
+services:
+  yshop-mysql:
+    volumes:
+      - type: bind
+        source: "../../integrations/yshop/server/sql/yixiang-drink-open.sql"
+        target: /docker-entrypoint-initdb.d/10-yshop-base.sql
+        read_only: true
+
+      - type: bind
+        source: "../../integrations/yshop/server/sql/migrations/minipay/V001__minipay_food_integration.sql"
+        target: /docker-entrypoint-initdb.d/20-minipay-food-integration.sql
+        read_only: true
+
+      - type: bind
+        source: "../../integrations/yshop/server/sql/migrations/minipay/V002__minipay_authorization_profiles.sql"
+        target: /docker-entrypoint-initdb.d/21-minipay-authorization-profiles.sql
+        read_only: true
+
+      - type: bind
+        source: "../../integrations/yshop/server/sql/migrations/minipay/V003__minipay_address_location_drafts.sql"
+        target: /docker-entrypoint-initdb.d/22-minipay-address-location-drafts.sql
+        read_only: true

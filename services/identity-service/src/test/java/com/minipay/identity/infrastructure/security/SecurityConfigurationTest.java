@@ -6,9 +6,28 @@ import java.util.List;
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.security.authentication.InsufficientAuthenticationException;
 import org.springframework.security.oauth2.jwt.Jwt;
 
 class SecurityConfigurationTest {
+    @Test
+    void redirectsUnauthenticatedAuthorizationRequestsWithRelativeLoginLocation()
+            throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("GET", "/oauth2/authorize");
+        request.setScheme("http");
+        request.setServerName("identity.minipay.localhost");
+        request.setServerPort(80);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        SecurityConfiguration.loginEntryPoint().commence(
+                request, response, new InsufficientAuthenticationException("login required"));
+
+        assertThat(response.getStatus()).isEqualTo(302);
+        assertThat(response.getHeader("Location")).isEqualTo("/login");
+    }
+
     @Test
     void acceptsMerchantApiTokensForIdentityMerchantEndpoints() {
         assertThat(SecurityConfiguration.isResourceApiAudience(List.of("merchant-api")))

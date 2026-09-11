@@ -1,0 +1,60 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: minipay
+
+resources:
+  - ../../base
+  - gateway.yaml
+
+patches:
+  - path: identity-demo-auth.yaml
+
+configMapGenerator:
+  - name: minipay-environment
+    envs:
+      - runtime.env
+
+secretGenerator:
+  - name: identity-runtime
+    envs:
+      - private/identity.env
+
+  - name: identity-jwt
+    files:
+      - jwt-private.pem=private/jwt-private.pem
+      - jwt-public.pem=private/jwt-public.pem
+
+  - name: wallet-runtime
+    envs:
+      - private/wallet.env
+
+  - name: payment-runtime
+    envs:
+      - private/payment.env
+
+  - name: commerce-runtime
+    envs:
+      - private/commerce.env
+
+  - name: agent-runtime
+    envs:
+      - private/agent.env
+
+  - name: consumer-bff-runtime
+    envs:
+      - private/consumer-bff.env
+
+  - name: management-bff-runtime
+    envs:
+      - private/management-bff.env
+
+  - name: admin-bff-runtime
+    envs:
+      - private/admin-bff.env
+
+  - name: yshop-runtime
+    envs:
+      - private/yshop.env
+
+generatorOptions:
+  disableNameSuffixHash: true

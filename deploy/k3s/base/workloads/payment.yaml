@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment-service
+  namespace: minipay
+  labels: &labels
+    app.kubernetes.io/name: payment-service
+    app.kubernetes.io/part-of: minipay
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: payment-service
+  template:
+    metadata:
+      labels: *labels
+    spec:
+      automountServiceAccountToken: false
+      securityContext: &podSecurity
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: payment-service
+          image: suqihang/payment-service:0.1.0-k3s.1
+          imagePullPolicy: IfNotPresent
+          ports: [{name: http, containerPort: 8080, protocol: TCP}]
+          env:
+            - name: MYSQL_URL
+              valueFrom: {configMapKeyRef: {name: minipay-environment, key: PAYMENT_MYSQL_URL}}
+            - name: WALLET_BASE_URL
+              valueFrom: {configMapKeyRef: {name: minipay-runtime, key: WALLET_INTERNAL_URL}}
+            - name: SEATA_SERVER_ADDR
+              valueFrom: {configMapKeyRef: {name: minipay-environment, key: SEATA_SERVER_ADDR}}
+          envFrom: &envFrom
+            - configMapRef: {name: minipay-runtime}
+            - configMapRef: {name: minipay-environment}
+            - secretRef: {name: payment-runtime}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+          startupProbe: &startup
+            httpGet: {path: /actuator/health/liveness, port: http}
+            failureThreshold: 30
+            periodSeconds: 5
+            timeoutSeconds: 2
+          readinessProbe: &readiness
+            httpGet: {path: /actuator/health/readiness, port: http}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe: &liveness
+            httpGet: {path: /actuator/health/liveness, port: http}
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources: &resources
+            requests: {cpu: 200m, memory: 384Mi}
+            limits: {cpu: "1", memory: 1Gi}
+          securityContext: &containerSecurity
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}
+      volumes: [{name: tmp, emptyDir: {sizeLimit: 128Mi}}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payment-service
+  namespace: minipay
+  labels:
+    app.kubernetes.io/name: payment-service
+    app.kubernetes.io/part-of: minipay
+spec:
+  type: ClusterIP
+  selector: {app.kubernetes.io/name: payment-service}
+  ports: [{name: http, port: 8080, targetPort: http, protocol: TCP}]

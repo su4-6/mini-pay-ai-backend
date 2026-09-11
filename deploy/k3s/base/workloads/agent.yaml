@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agent-service
+  namespace: minipay
+  labels: &labels
+    app.kubernetes.io/name: agent-service
+    app.kubernetes.io/part-of: minipay
+spec:
+  replicas: 1
+  selector: {matchLabels: {app.kubernetes.io/name: agent-service}}
+  template:
+    metadata: {labels: *labels}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: agent-service
+          image: suqihang/agent-service:0.1.0-k3s.2
+          imagePullPolicy: IfNotPresent
+          ports: [{name: http, containerPort: 8080, protocol: TCP}]
+          env:
+            - name: MYSQL_URL
+              valueFrom: {configMapKeyRef: {name: minipay-environment, key: AGENT_MYSQL_URL}}
+          envFrom:
+            - configMapRef: {name: minipay-runtime}
+            - configMapRef: {name: minipay-environment}
+            - secretRef: {name: agent-runtime}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+          startupProbe: {httpGet: {path: /actuator/health/liveness, port: http}, failureThreshold: 30, periodSeconds: 5, timeoutSeconds: 2}
+          readinessProbe: {httpGet: {path: /actuator/health/readiness, port: http}, initialDelaySeconds: 5, periodSeconds: 10, timeoutSeconds: 2, failureThreshold: 3}
+          livenessProbe: {httpGet: {path: /actuator/health/liveness, port: http}, initialDelaySeconds: 10, periodSeconds: 15, timeoutSeconds: 2, failureThreshold: 3}
+          resources: {requests: {cpu: 250m, memory: 512Mi}, limits: {cpu: "1", memory: 1280Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+      volumes: [{name: tmp, emptyDir: {sizeLimit: 256Mi}}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agent-service
+  namespace: minipay
+  labels:
+    app.kubernetes.io/name: agent-service
+    app.kubernetes.io/part-of: minipay
+spec:
+  type: ClusterIP
+  selector: {app.kubernetes.io/name: agent-service}
+  ports: [{name: http, port: 8080, targetPort: http, protocol: TCP}]

@@ -1,0 +1,19 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: identity-service
+  namespace: minipay
+spec:
+  template:
+    spec:
+      containers:
+        - name: identity-service
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: k3s,demo-auth
+            - name: SMS_PROVIDER
+              value: demo
+            - name: SMS_RESEND_AFTER
+              value: 1s
+            - name: REAL_NAME_PROVIDER
+              value: sandbox

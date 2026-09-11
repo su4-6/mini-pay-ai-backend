@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: minipay-runtime
+  namespace: minipay
+data:
+  SERVER_PORT: "8080"
+  SERVER_FORWARD_HEADERS_STRATEGY: framework
+  SPRING_PROFILES_ACTIVE: k3s
+  JWT_SIGNING_PRIVATE_KEY_LOCATION: file:/var/run/secrets/minipay/jwt-private.pem
+  JWT_SIGNING_PUBLIC_KEY_LOCATION: file:/var/run/secrets/minipay/jwt-public.pem
+  IDENTITY_INTERNAL_URL: http://identity-service:8080
+  IDENTITY_JWK_SET_URI: http://identity-service:8080/oauth2/jwks
+  IDENTITY_TOKEN_URL: http://identity-service:8080/oauth2/token
+  PAYMENT_INTERNAL_URL: http://payment-service:8080
+  WALLET_INTERNAL_URL: http://wallet-service:8080
+  AGENT_INTERNAL_URL: http://agent-service:8080
+  COMMERCE_INTERNAL_URL: http://commerce-service:8080
+  MINIPAY_COMMERCE_INTERNAL_URL: http://commerce-service:8080
+  YSHOP_INTERNAL_URL: http://yshop-server:48080
+  SMS_PROVIDER: disabled
+  EMAIL_PROVIDER: disabled
+  REAL_NAME_PROVIDER: disabled
+  OBJECT_STORAGE_PROVIDER: disabled
+  CONTENT_SAFETY_PROVIDER: disabled
+  MODEL_CHAT_MODE: none
+  MODEL_ENABLED: "false"
+  MINIPAY_FOOD_PROVIDER: yshop
+  # 外卖订单结算所用的平台商户应用（payment-service 的 FoodPaymentSagaService 在为空时
+  # 会直接抛 IllegalStateException("FOOD_PLATFORM_MERCHANT_APP_ID is not configured")，
+  # 导致“外卖下单 -> 支付”整条链路不可用）。
+  # 取值必须对应 payment 库中同时满足 merchant.status=ACTIVE、
+  # merchant_application.status=ACTIVE、available_channels 含 WALLET 的 app_id。
+  # 这里沿用 compose.yaml 的演示默认值（星河便利店 M202608030001）；
+  # 正式环境必须覆盖为真实平台商户 app_id。
+  FOOD_PLATFORM_MERCHANT_APP_ID: app_demo_starry

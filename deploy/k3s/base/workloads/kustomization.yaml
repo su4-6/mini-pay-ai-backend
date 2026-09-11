@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Sub-package used by the YShop Lite cutover. The full base continues to list
+# every workload explicitly, while this package renders only the three YShop
+# resources without disabling Kustomize's path safety checks.
+resources:
+  - yshop-server.yaml
+  - yshop-food-h5.yaml
+  - yshop-admin-web.yaml

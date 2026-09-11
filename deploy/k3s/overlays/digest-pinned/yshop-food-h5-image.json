@@ -1,0 +1,1 @@
+[{"op":"replace","path":"/spec/template/spec/containers/0/image","value":"suqihang/yshop-food-h5@sha256:131bd717d42f6eb657bff18363ae48a1b53508a33c9042dc82adbce62bf11f35"}]

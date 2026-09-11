@@ -1,0 +1,7 @@
+# The build script verifies source once with Java 21. Runtime image builds may
+# receive only the already verified application jars.
+**
+!services/
+!services/*/
+!services/*/target/
+!services/*/target/*.jar

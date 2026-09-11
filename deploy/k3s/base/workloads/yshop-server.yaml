@@ -1,0 +1,107 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: yshop-server
+  namespace: minipay
+  labels: &labels
+    app.kubernetes.io/name: yshop-server
+    app.kubernetes.io/part-of: minipay
+spec:
+  replicas: 1
+  selector: {matchLabels: {app.kubernetes.io/name: yshop-server}}
+  template:
+    metadata: {labels: *labels}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, fsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: yshop-server
+          # 正版 yshop-drink-boot3（完整多模块），由 integrations/yshop/server 构建
+          image: suqihang/yshop-server:0.1.0-k3s.3-full.4
+          imagePullPolicy: IfNotPresent
+          ports: [{name: http, containerPort: 48080}]
+          env:
+            # 正版仓库只有 local/dev/production 三个 profile，K8s 用 production
+            - name: SPRING_PROFILES_ACTIVE
+              value: production
+            - name: YSHOP_SERVER_PORT
+              value: "48080"
+            - name: YSHOP_MYSQL_URL
+              valueFrom: {configMapKeyRef: {name: minipay-environment, key: YSHOP_MYSQL_URL}}
+            - name: YSHOP_MYSQL_USERNAME
+              valueFrom: {secretKeyRef: {name: yshop-runtime, key: SPRING_DATASOURCE_DYNAMIC_DATASOURCE_MASTER_USERNAME}}
+            - name: YSHOP_MYSQL_PASSWORD
+              valueFrom: {secretKeyRef: {name: yshop-runtime, key: SPRING_DATASOURCE_DYNAMIC_DATASOURCE_MASTER_PASSWORD}}
+            - name: YSHOP_REDIS_HOST
+              valueFrom: {configMapKeyRef: {name: minipay-environment, key: YSHOP_REDIS_HOST}}
+            - name: YSHOP_REDIS_PORT
+              valueFrom: {configMapKeyRef: {name: minipay-environment, key: YSHOP_REDIS_PORT}}
+            - name: YSHOP_REDIS_PASSWORD
+              valueFrom: {secretKeyRef: {name: yshop-runtime, key: SPRING_DATA_REDIS_PASSWORD}}
+            # production profile 必须提供 RabbitMQ（Quartz 与业务 MQ 都依赖）
+            - name: YSHOP_RABBITMQ_HOST
+              valueFrom: {configMapKeyRef: {name: minipay-environment, key: RABBITMQ_HOST}}
+            - name: YSHOP_RABBITMQ_PORT
+              valueFrom: {configMapKeyRef: {name: minipay-environment, key: RABBITMQ_PORT}}
+            - name: YSHOP_RABBITMQ_USERNAME
+              valueFrom: {secretKeyRef: {name: yshop-runtime, key: SPRING_RABBITMQ_USERNAME}}
+            - name: YSHOP_RABBITMQ_PASSWORD
+              valueFrom: {secretKeyRef: {name: yshop-runtime, key: SPRING_RABBITMQ_PASSWORD}}
+            - name: YSHOP_MINIPAY_HMAC_SECRET
+              valueFrom: {secretKeyRef: {name: yshop-runtime, key: YSHOP_MINIPAY_HMAC_SECRET}}
+            - name: YSHOP_MINIPAY_TENANT_ID
+              value: "1"
+            # 网关内的 commerce-service 服务端口是 8080（compose 里是 8085）
+            - name: MINIPAY_COMMERCE_INTERNAL_URL
+              value: http://commerce-service:8080
+            - name: YSHOP_MINIPAY_H5_ORIGIN
+              valueFrom: {configMapKeyRef: {name: minipay-environment, key: YSHOP_MINIPAY_H5_ORIGIN}}
+            - name: YSHOP_MINIPAY_AVATAR_ALLOWED_HOSTS
+              value: localhost,127.0.0.1,minipay-ai.oss-cn-beijing.aliyuncs.com
+            - name: YSHOP_MINIPAY_AMAP_WEB_KEY
+              valueFrom: {configMapKeyRef: {name: minipay-environment, key: YSHOP_MINIPAY_AMAP_WEB_KEY}}
+            # 支付/退款回调地址（compose 里由 FOOD_PUBLIC_ORIGIN 拼出）
+            - name: YSHOP_ORDER_NOTIFY_URL
+              value: http://food.minipay.localhost:18080/admin-api/pay/notify/order
+            - name: YSHOP_REFUND_NOTIFY_URL
+              value: http://food.minipay.localhost:18080/admin-api/pay/notify/refund
+            # 图形验证码：已按上线要求恢复为启用（application-production.yaml 默认 true）。
+            # 本地自动化验收期间曾临时置为 false，现已移除该覆盖。
+            # 微信功能本项目不使用，但 yshop-module-mp 的自动配置在启动时会实例化
+            # WxMpService / WxMaService，缺少 app-id 会直接启动失败。
+            # 因此从 Secret 注入占位值（Secret 已标注 minipay.io/wechat=disabled-placeholder）；
+            # 源码 application-production.yaml 里不再保留任何默认值。
+            - name: WX_MP_APP_ID
+              valueFrom: {secretKeyRef: {name: yshop-runtime, key: WX_MP_APP_ID}}
+            - name: WX_MP_SECRET
+              valueFrom: {secretKeyRef: {name: yshop-runtime, key: WX_MP_SECRET}}
+            - name: WX_MINIAPP_APPID
+              valueFrom: {secretKeyRef: {name: yshop-runtime, key: WX_MINIAPP_APPID}}
+            - name: WX_MINIAPP_SECRET
+              valueFrom: {secretKeyRef: {name: yshop-runtime, key: WX_MINIAPP_SECRET}}
+            - name: MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE
+              value: health,info
+            - name: MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED
+              value: "true"
+            # logback-spring.xml 里 <file>${LOG_FILE}</file> 走文件日志；
+            # 容器是 readOnlyRootFilesystem，必须把日志指到可写的 /tmp，
+            # 否则启动即报 FileNotFoundException: LOG_FILE_IS_UNDEFINED 并崩溃。
+            - name: LOGGING_FILE_NAME
+              value: /tmp/logs/yshop-server.log
+          startupProbe: {httpGet: {path: /actuator/health/readiness, port: http}, failureThreshold: 60, periodSeconds: 5, timeoutSeconds: 3}
+          readinessProbe: {httpGet: {path: /actuator/health/readiness, port: http}, periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 6}
+          livenessProbe: {httpGet: {path: /actuator/health/liveness, port: http}, periodSeconds: 20, timeoutSeconds: 3, failureThreshold: 6}
+          resources: {requests: {cpu: 300m, memory: 1Gi}, limits: {cpu: "2", memory: 2Gi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+      volumes: [{name: tmp, emptyDir: {sizeLimit: 256Mi}}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: yshop-server
+  namespace: minipay
+  labels:
+    app.kubernetes.io/name: yshop-server
+    app.kubernetes.io/part-of: minipay
+spec: {type: ClusterIP, selector: {app.kubernetes.io/name: yshop-server}, ports: [{name: http, port: 48080, targetPort: http}]}

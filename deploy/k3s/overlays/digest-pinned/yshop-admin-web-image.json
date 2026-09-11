@@ -1,0 +1,1 @@
+[{"op":"replace","path":"/spec/template/spec/containers/0/image","value":"suqihang/yshop-admin-web@sha256:0f7ab55f7a1d112c4926efa53df30a86b8f6caf7da56373b1b8a80852c9667c9"}]

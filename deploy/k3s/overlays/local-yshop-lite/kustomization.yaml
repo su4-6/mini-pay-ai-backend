@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: minipay
+
+resources:
+  - ../../base/workloads
+
+images:
+  - name: suqihang/yshop-server
+    newTag: 0.1.0-k3s.2-lite.1
+  - name: suqihang/yshop-food-h5
+    newTag: 0.1.0-k3s.2-lite.1
+  - name: suqihang/yshop-admin-web
+    newTag: 0.1.0-k3s.2-lite.1

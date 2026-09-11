@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS `yshop_minipay_address_location_draft` (
+  `draft_id` char(36) NOT NULL,
+  `subject` char(36) NOT NULL,
+  `member_id` bigint unsigned NOT NULL,
+  `location_context_id` char(36) NOT NULL,
+  `display_address` varchar(500) NOT NULL,
+  `province` varchar(64) NOT NULL DEFAULT '',
+  `city` varchar(64) NOT NULL DEFAULT '',
+  `district` varchar(64) NOT NULL DEFAULT '',
+  `longitude` decimal(12,8) NOT NULL,
+  `latitude` decimal(12,8) NOT NULL,
+  `expires_at` datetime(6) NOT NULL,
+  `consumed_at` datetime(6) DEFAULT NULL,
+  `idempotency_key` varchar(128) DEFAULT NULL,
+  `address_id` bigint unsigned DEFAULT NULL,
+  `is_default` bit(1) DEFAULT NULL,
+  `created_at` datetime(6) NOT NULL,
+  PRIMARY KEY (`draft_id`),
+  UNIQUE KEY `uk_minipay_address_draft_idempotency` (`subject`, `idempotency_key`),
+  KEY `idx_minipay_address_draft_expiry` (`expires_at`),
+  KEY `idx_minipay_address_draft_member` (`member_id`, `created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='Short-lived MiniPay address location draft';

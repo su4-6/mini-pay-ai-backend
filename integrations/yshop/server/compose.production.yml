@@ -1,0 +1,92 @@
+name: yshop-production
+
+services:
+  yshop-mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${YSHOP_MYSQL_DATABASE:?YSHOP_MYSQL_DATABASE is required}
+      MYSQL_USER: ${YSHOP_MYSQL_USERNAME:?YSHOP_MYSQL_USERNAME is required}
+      MYSQL_PASSWORD: ${YSHOP_MYSQL_PASSWORD:?YSHOP_MYSQL_PASSWORD is required}
+      MYSQL_ROOT_PASSWORD: ${YSHOP_MYSQL_ROOT_PASSWORD:?YSHOP_MYSQL_ROOT_PASSWORD is required}
+    volumes:
+      - yshop-mysql-data:/var/lib/mysql
+      - ./sql/yixiang-drink-open.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro
+      - ./sql/migrations/minipay/V001__minipay_food_integration.sql:/docker-entrypoint-initdb.d/101-minipay.sql:ro
+      - ./sql/migrations/minipay/V002__minipay_authorization_profiles.sql:/docker-entrypoint-initdb.d/102-minipay.sql:ro
+      - ./sql/migrations/minipay/V003__minipay_address_location_drafts.sql:/docker-entrypoint-initdb.d/103-minipay.sql:ro
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 45s
+
+  yshop-redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${YSHOP_REDIS_PASSWORD:?YSHOP_REDIS_PASSWORD is required}"]
+    environment:
+      YSHOP_REDIS_PASSWORD: ${YSHOP_REDIS_PASSWORD}
+    volumes:
+      - yshop-redis-data:/data
+    networks: [backend]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a '$$YSHOP_REDIS_PASSWORD' ping | grep PONG"]
+      interval: 10s
+      timeout: 3s
+      retries: 20
+
+  yshop-server:
+    build:
+      context: .
+      dockerfile: docker/production.Dockerfile
+    image: yshop-server:production
+    restart: unless-stopped
+    depends_on:
+      yshop-mysql: { condition: service_healthy }
+      yshop-redis: { condition: service_healthy }
+    environment:
+      SPRING_PROFILES_ACTIVE: production
+      YSHOP_SERVER_PORT: "48080"
+      YSHOP_MYSQL_URL: jdbc:mysql://yshop-mysql:3306/${YSHOP_MYSQL_DATABASE}?useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&nullCatalogMeansCurrent=true
+      YSHOP_MYSQL_USERNAME: ${YSHOP_MYSQL_USERNAME}
+      YSHOP_MYSQL_PASSWORD: ${YSHOP_MYSQL_PASSWORD}
+      YSHOP_REDIS_HOST: yshop-redis
+      YSHOP_REDIS_PORT: "6379"
+      YSHOP_REDIS_PASSWORD: ${YSHOP_REDIS_PASSWORD}
+      YSHOP_RABBITMQ_HOST: rabbitmq
+      YSHOP_RABBITMQ_PORT: "5672"
+      YSHOP_RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-minipay}
+      YSHOP_RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD is required}
+      YSHOP_MINIPAY_TENANT_ID: ${YSHOP_MINIPAY_TENANT_ID:-1}
+      YSHOP_MINIPAY_HMAC_SECRET: ${YSHOP_MINIPAY_HMAC_SECRET:?YSHOP_MINIPAY_HMAC_SECRET is required}
+      MINIPAY_COMMERCE_INTERNAL_URL: http://commerce-service:8085
+      YSHOP_MINIPAY_H5_ORIGIN: ${FOOD_PUBLIC_ORIGIN:?FOOD_PUBLIC_ORIGIN is required}
+      YSHOP_MINIPAY_AVATAR_ALLOWED_HOSTS: ${YSHOP_MINIPAY_AVATAR_ALLOWED_HOSTS:?YSHOP_MINIPAY_AVATAR_ALLOWED_HOSTS is required}
+      YSHOP_MINIPAY_AMAP_WEB_KEY: ${YSHOP_MINIPAY_AMAP_WEB_KEY:?YSHOP_MINIPAY_AMAP_WEB_KEY is required}
+      YSHOP_ORDER_NOTIFY_URL: ${FOOD_PUBLIC_ORIGIN}/admin-api/pay/notify/order
+      YSHOP_REFUND_NOTIFY_URL: ${FOOD_PUBLIC_ORIGIN}/admin-api/pay/notify/refund
+    ports:
+      - "127.0.0.1:${YSHOP_HOST_PORT:-48081}:48080"
+    networks:
+      backend:
+        aliases: [yshop-server]
+    mem_limit: 1024m
+    pids_limit: 256
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:48080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
+networks:
+  backend:
+    external: true
+    name: minipay_default
+
+volumes:
+  yshop-mysql-data:
+  yshop-redis-data:

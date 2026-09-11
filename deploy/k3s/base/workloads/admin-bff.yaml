@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: admin-bff
+  namespace: minipay
+  labels: &labels
+    app.kubernetes.io/name: admin-bff
+    app.kubernetes.io/part-of: minipay
+spec:
+  replicas: 1
+  selector: {matchLabels: {app.kubernetes.io/name: admin-bff}}
+  template:
+    metadata: {labels: *labels}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, fsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: admin-bff
+          image: suqihang/admin-bff:0.1.0-k3s.1
+          imagePullPolicy: IfNotPresent
+          ports: [{name: http, containerPort: 8080, protocol: TCP}]
+          env:
+            - {name: SPRING_SESSION_COOKIE_NAME, value: minipay-admin-local}
+          envFrom:
+            - configMapRef: {name: minipay-runtime}
+            - configMapRef: {name: minipay-environment}
+            - secretRef: {name: admin-bff-runtime}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+          startupProbe: {httpGet: {path: /actuator/health/liveness, port: http}, failureThreshold: 30, periodSeconds: 5}
+          readinessProbe: {httpGet: {path: /actuator/health/readiness, port: http}, periodSeconds: 10, failureThreshold: 3}
+          livenessProbe: {httpGet: {path: /actuator/health/liveness, port: http}, periodSeconds: 15, failureThreshold: 3}
+          resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {cpu: 750m, memory: 768Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+      volumes: [{name: tmp, emptyDir: {sizeLimit: 128Mi}}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: admin-bff
+  namespace: minipay
+  labels:
+    app.kubernetes.io/name: admin-bff
+    app.kubernetes.io/part-of: minipay
+spec: {type: ClusterIP, selector: {app.kubernetes.io/name: admin-bff}, ports: [{name: http, port: 8080, targetPort: http}]}

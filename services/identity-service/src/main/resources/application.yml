@@ -32,6 +32,7 @@ spring:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
   session:
     timeout: ${IDENTITY_SESSION_TIMEOUT:30m}
     redis:
@@ -141,7 +142,7 @@ minipay:
     sms:
       provider: ${SMS_PROVIDER:disabled}
       code-ttl: 5m
-      resend-after: 60s
+      resend-after: ${SMS_RESEND_AFTER:60s}
       consumer-lock-duration: 10m
       demo-code: ${DEMO_SMS_CODE:123456}
       webhook-url: ${SMS_WEBHOOK_URL:http://localhost:8099/v1/messages}

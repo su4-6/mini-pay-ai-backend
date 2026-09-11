@@ -1,0 +1,1 @@
+[{"op":"replace","path":"/spec/template/spec/containers/0/image","value":"suqihang/wallet-service@sha256:43be47fd01e9b75903a361af88521096f49e5f7c6d046823d288b4fef2b3e105"}]

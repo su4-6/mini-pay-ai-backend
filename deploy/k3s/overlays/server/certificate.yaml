@@ -1,0 +1,7 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata: {name: minipay-wildcard, namespace: minipay}
+spec:
+  secretName: minipay-wildcard-tls
+  issuerRef: {name: letsencrypt-cloudflare, kind: ClusterIssuer}
+  dnsNames: [su46proj.site, "*.su46proj.site"]
