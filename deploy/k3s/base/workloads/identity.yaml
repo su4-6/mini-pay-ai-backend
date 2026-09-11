@@ -39,6 +39,32 @@ spec:
                 configMapKeyRef:
                   name: minipay-environment
                   key: IDENTITY_MYSQL_URL
+            # ------------------------------------------------------------------
+            # 固定短信验证码 123456（演示/验收用，本地与服务器一致）。
+            #
+            # 必须同时满足两个条件 DemoSmsSender 才会生效：
+            #   @Profile("demo-auth")                        -> 下面第 1 项
+            #   minipay.identity.sms.provider == "demo"       -> 下面第 2 项
+            # 只设 SMS_PROVIDER=demo 是不够的，profile 也必须带上，否则仍然报
+            # “短信服务暂不可用”。
+            #
+            # ⚠️ 安全警告（务必知悉）：
+            #   固定验证码意味着**任何人只要知道手机号就能登录任意账号**，
+            #   等同于鉴权旁路。因此：
+            #     - 仅适用于演示/内部验收环境；
+            #     - 服务器上必须做访问控制（安全组/白名单/内网），不要对公网开放；
+            #     - 接入真实用户前必须改用真实短信通道：
+            #       SMS_PROVIDER 可选 aliyun / dypns / webhook / console。
+            #
+            # 说明：demo-auth profile 还会把 classpath:db/demo 加入 Flyway 位置，
+            #   全新数据库会自动创建演示平台管理员与演示商户账号（本地库已应用过，不会重跑）。
+            # ------------------------------------------------------------------
+            - name: SPRING_PROFILES_ACTIVE
+              value: k3s,demo-auth
+            - name: SMS_PROVIDER
+              value: demo
+            - name: DEMO_SMS_CODE
+              value: "123456"
           envFrom:
             - configMapRef:
                 name: minipay-runtime
