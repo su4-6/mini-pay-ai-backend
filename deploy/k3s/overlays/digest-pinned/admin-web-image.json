@@ -1,1 +1,1 @@
-[{"op":"replace","path":"/spec/template/spec/containers/0/image","value":"suqihang/admin-web@sha256:43213bb2488dd889548ab33e0eb827f114e960b8b9ecb60b2ba9fdca6f905fc6"}]
+[{"op":"replace","path":"/spec/template/spec/containers/0/image","value":"suqihang/admin-web@sha256:84ac8124728ada46d793c0c22ea27249ced38dee7f4028e47f6b81999150752b"}]

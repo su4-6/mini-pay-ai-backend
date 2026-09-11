@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidateSet('Validate','Start','Check','Probe')][string]$Action = 'Validate',
     [string]$ExpectedContext = 'docker-desktop',
@@ -73,8 +73,14 @@ function Check-Static {
         }
     }
     $sql = @($configuration.services.'yshop-mysql'.volumes | Where-Object { $_.target -like '/docker-entrypoint-initdb.d/*' })
-    if ($sql.Count -ne 6) { throw 'Exactly six YShop local bootstrap SQL mounts are required.' }
-    Pass 'Static configuration: seven infrastructure services, private variables, source paths, six SQL mounts'
+    if ($sql.Count -lt 1) { throw 'YShop local bootstrap SQL mounts are required.' }
+    # 不写死数量：SQL 迁移集会随版本增删（例如 V004/V005 已被有意移除）。
+    # 改为校验「挂载目标唯一且源文件存在」，数量由 compose 声明决定。
+    $sqlTargets = @($sql | ForEach-Object { $_.target })
+    if (($sqlTargets | Select-Object -Unique).Count -ne $sqlTargets.Count) {
+        throw "Duplicate YShop SQL mount targets: $($sqlTargets -join ', ')"
+    }
+    Pass "Static configuration: seven infrastructure services, private variables, source paths, $($sql.Count) SQL mounts"
 }
 function Require-Docker {
     $context = Run-Docker @('context','inspect','--format','{{.Endpoints.docker.Host}}')

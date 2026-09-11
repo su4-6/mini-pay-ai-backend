@@ -118,16 +118,16 @@ if (-not $SkipBuild) {
 
     Stage '构建 3 个前端静态镜像'
     foreach ($web in @(
-            @{ name = 'merchant-web'; path = "$frontend/apps/merchant-web";           df = "$repoRoot/deploy/k3s/images/static-web.Dockerfile"; dist = 'dist' },
-            @{ name = 'ops-web';      path = "$frontend/apps/ops-web";                df = "$repoRoot/deploy/k3s/images/static-web.Dockerfile"; dist = 'dist' },
-            @{ name = 'admin-web';    path = "$frontend/apps/admin-web";              df = "$repoRoot/deploy/k3s/images/static-web.Dockerfile"; dist = 'dist' }
+            @{ name = 'merchant-web'; path = "$frontend/apps/merchant-web";           df = "$frontend/docker/k3s-web.Dockerfile"; dist = 'dist' },
+            @{ name = 'ops-web';      path = "$frontend/apps/ops-web";                df = "$frontend/docker/k3s-web.Dockerfile"; dist = 'dist' },
+            @{ name = 'admin-web';    path = "$frontend/apps/admin-web";              df = "$frontend/docker/k3s-web.Dockerfile"; dist = 'dist' }
         )) {
         if (-not (Test-Path $web.path)) { Write-Host "  跳过（不存在）: $($web.name)" -ForegroundColor DarkGray; continue }
         Write-Host "  -> $($web.name)"
         Run 'pnpm' @('install', '--frozen-lockfile') $web.path
         Run 'pnpm' @('build') $web.path
         if (Test-Path $web.df) {
-            Run 'docker' @('build', '--file', $web.df, '--tag', "$Namespace/$($web.name):$Version", $web.path) $web.path
+            Run 'docker' @('build', '--file', $web.df, '--build-arg', "APP=$($web.name)", '--tag', "$Namespace/$($web.name):$Version", $frontend) $frontend
         } else {
             Write-Host "  仅构建产物（无 Dockerfile）: $($web.name)" -ForegroundColor Yellow
         }

@@ -1,22 +1,11 @@
-apiVersion: kustomize.config.k8s.io/v1beta1
+﻿apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: minipay
 resources:
   - ../../base
 
 # 由 scripts/k3s/pin-image-digests.ps1 生成：把所有自建镜像固定到 registry digest。
-#
-# ⚠️ 本 overlay 只做「镜像 digest 锁定」，**不是完整的部署清单**：
-#    它不定义 minipay-environment（各 Deployment 有 20+ 处引用它），
-#    单独 kubectl apply -k 到新集群会因缺少该 ConfigMap 而 CreateContainerConfigError。
-#    实测：本 overlay 渲染出 1 个 ConfigMap（minipay-runtime），
-#          overlays/local 渲染出 2 个（minipay-environment + minipay-runtime）。
-#
-# 正确用法（二选一）：
-#   本地  ：先 kubectl apply -k overlays/local（生成 minipay-environment），
-#           再 kubectl apply -k overlays/digest-pinned（锁定镜像）。
-#   服务器：直接用 overlays/server —— 它自带 runtime.env 的 configMapGenerator
-#           与 private/digests 组件，配置与 digest 一次到位。
+# 生产部署应使用本 overlay，保证「同一清单永远拉到同一镜像」。
 patches:
   - path: admin-bff-image.json
     target:

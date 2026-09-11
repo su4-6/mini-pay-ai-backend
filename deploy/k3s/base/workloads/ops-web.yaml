@@ -16,7 +16,7 @@ spec:
       securityContext: {runAsNonRoot: true, runAsUser: 101, runAsGroup: 101, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: ops-web
-          image: suqihang/ops-web:0.1.0-k3s.3
+          image: suqihang/ops-web:0.1.0-k3s.4
           imagePullPolicy: IfNotPresent
           ports: [{name: http, containerPort: 8080}]
           startupProbe: {httpGet: {path: /healthz, port: http}, failureThreshold: 12, periodSeconds: 5}

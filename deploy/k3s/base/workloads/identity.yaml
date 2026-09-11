@@ -27,7 +27,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: identity-service
-          image: suqihang/identity-service:0.1.0-k3s.1
+          image: suqihang/identity-service:0.1.0-k3s.4
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

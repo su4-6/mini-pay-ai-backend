@@ -21,7 +21,7 @@ spec:
         seccompProfile: {type: RuntimeDefault}
       containers:
         - name: agent-service
-          image: suqihang/agent-service:0.1.0-k3s.2
+          image: suqihang/agent-service:0.1.0-k3s.4
           imagePullPolicy: IfNotPresent
           ports: [{name: http, containerPort: 8080, protocol: TCP}]
           env:

@@ -16,7 +16,7 @@ spec:
       securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, fsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: management-bff
-          image: suqihang/management-bff:0.1.0-k3s.1
+          image: suqihang/management-bff:0.1.0-k3s.4
           imagePullPolicy: IfNotPresent
           ports: [{name: http, containerPort: 8080, protocol: TCP}]
           env:
