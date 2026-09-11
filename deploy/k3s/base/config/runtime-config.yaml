@@ -26,6 +26,19 @@ data:
   MODEL_CHAT_MODE: none
   MODEL_ENABLED: "false"
   MINIPAY_FOOD_PROVIDER: yshop
+  # 自研管理端 admin-web（admin.<domain>）要求 system_super_admin / system_account_admin
+  # 角色才能进入。
+  #
+  # ⚠️ 不要在这里设置 BOOTSTRAP_SYSTEM_ADMIN_MOBILE：
+  # identity-service 的 SystemAdminBootstrap 在「该手机号已被现有账号绑定」时
+  # 会直接抛 IllegalStateException("Bootstrap administrator mobile is already bound")
+  # 导致**启动失败、CrashLoopBackOff**（已实测踩到）。
+  # 而且它创建的是 credential_type='SMS' 的新账号，在 SMS_PROVIDER=disabled 下无法登录。
+  #
+  # 正确做法：给已有的、已有密码的管理员账号直接授予系统角色，
+  # 见 scripts/k3s/sql/grant-system-admin.sql。
+  # 正式环境首次部署时可用该引导（指向一个未被占用的手机号），先在本地把该账号的
+  # 登录密码设置好，再进入 admin-web。
   # 外卖订单结算所用的平台商户应用（payment-service 的 FoodPaymentSagaService 在为空时
   # 会直接抛 IllegalStateException("FOOD_PLATFORM_MERCHANT_APP_ID is not configured")，
   # 导致“外卖下单 -> 支付”整条链路不可用）。

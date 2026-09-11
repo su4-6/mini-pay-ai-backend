@@ -1,0 +1,7 @@
+[
+  {"op":"add","path":"/spec/template/spec/containers/0/startupProbe/timeoutSeconds","value":5},
+  {"op":"add","path":"/spec/template/spec/containers/0/readinessProbe/failureThreshold","value":6},
+  {"op":"add","path":"/spec/template/spec/containers/0/readinessProbe/timeoutSeconds","value":5},
+  {"op":"add","path":"/spec/template/spec/containers/0/livenessProbe/failureThreshold","value":6},
+  {"op":"add","path":"/spec/template/spec/containers/0/livenessProbe/timeoutSeconds","value":5}
+]

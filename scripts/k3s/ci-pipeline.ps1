@@ -19,8 +19,8 @@ param(
     [switch]$SkipBuild,
     [switch]$SkipPush,
     [switch]$Deploy,
-    [string]$MavenJavaHome = 'C:\Users\hp\.jdks\ms-21.0.12',
-    [string]$MavenJavaHome17 = 'C:\Users\hp\.jdks\ms-17.0.20'
+    [string]$MavenJavaHome = '',
+    [string]$MavenJavaHome17 = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -33,6 +33,47 @@ function Run($exe, $argsArr, $workdir) {
     Push-Location $workdir
     try { & $exe @argsArr; if ($LASTEXITCODE -ne 0) { Fail "$exe $($argsArr -join ' ') (exit $LASTEXITCODE)" } }
     finally { Pop-Location }
+}
+
+# Cross-platform shell for calling sibling .ps1 scripts. Windows PowerShell only
+# exists on Windows; Linux/macOS CI runners only have pwsh.
+$script:PowerShellExe = if (Get-Command pwsh -ErrorAction SilentlyContinue) { 'pwsh' }
+                        elseif (Get-Command powershell -ErrorAction SilentlyContinue) { 'powershell' }
+                        else { Fail 'Neither pwsh nor powershell was found on PATH.' }
+
+# Resolve a JDK home for a required major version.
+# Historically these were hardcoded to C:\Users\hp\.jdks\..., which made the
+# pipeline fail on any other machine and on Linux CI runners.
+# Order: explicit parameter -> ambient JAVA_HOME if it matches -> common install roots.
+function Resolve-JavaHome([string]$Explicit, [string]$Major, [string]$ForWhat) {
+    $test = {
+        param($candidate)
+        $release = Join-Path $candidate 'release'
+        if (-not (Test-Path $release)) { return $false }
+        return ((Get-Content $release -Raw) -match "JAVA_VERSION=`"$Major\.")
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Explicit)) {
+        if (-not (Test-Path $Explicit)) { Fail "指定的 JDK 路径不存在（$ForWhat）：$Explicit" }
+        if (-not (& $test $Explicit)) { Fail "指定的 JDK 路径不是 Java $Major（$ForWhat）：$Explicit" }
+        return $Explicit
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:JAVA_HOME) -and (Test-Path $env:JAVA_HOME)) {
+        if (& $test $env:JAVA_HOME) { return $env:JAVA_HOME }
+    }
+    $roots = @(
+        (Join-Path $env:USERPROFILE '.jdks'),
+        (Join-Path $env:USERPROFILE '.sdkman/candidates/java'),
+        "$env:LOCALAPPDATA\Programs\Eclipse Adoptium",
+        '/usr/lib/jvm',
+        '/opt/java'
+    )
+    foreach ($root in $roots) {
+        if (-not (Test-Path $root)) { continue }
+        foreach ($dir in (Get-ChildItem $root -Directory -ErrorAction SilentlyContinue)) {
+            if (& $test $dir.FullName) { return $dir.FullName }
+        }
+    }
+    Fail "找不到 Java $Major（$ForWhat）。请用 -MavenJavaHome / -MavenJavaHome17 指定，或设置 JAVA_HOME。"
 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
@@ -63,8 +104,9 @@ $javaServices = @(
 
 if (-not $SkipBuild) {
     Stage '构建 8 个 Java/BFF 服务镜像'
-    $env:JAVA_HOME = $MavenJavaHome
-    $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
+    $env:JAVA_HOME = Resolve-JavaHome $MavenJavaHome '21' 'MiniPay 后端'
+    $env:PATH = (Join-Path $env:JAVA_HOME 'bin') + [IO.Path]::PathSeparator + $env:PATH
+    Write-Host "  JAVA_HOME = $env:JAVA_HOME"
     foreach ($svc in $javaServices) {
         Write-Host "  -> $($svc.name)"
         Run 'mvn' @('-B', '-ntp', '-pl', $svc.module, '-am', '-DskipTests', 'package') $repoRoot
@@ -82,8 +124,8 @@ if (-not $SkipBuild) {
         )) {
         if (-not (Test-Path $web.path)) { Write-Host "  跳过（不存在）: $($web.name)" -ForegroundColor DarkGray; continue }
         Write-Host "  -> $($web.name)"
-        Run 'pnpm.cmd' @('install', '--frozen-lockfile') $web.path
-        Run 'pnpm.cmd' @('build') $web.path
+        Run 'pnpm' @('install', '--frozen-lockfile') $web.path
+        Run 'pnpm' @('build') $web.path
         if (Test-Path $web.df) {
             Run 'docker' @('build', '--file', $web.df, '--tag', "$Namespace/$($web.name):$Version", $web.path) $web.path
         } else {
@@ -97,8 +139,9 @@ if (-not $SkipBuild) {
     $yshopAdminWeb = "$frontend/integrations/yshop/admin-web"
     $yshopFoodH5 = "$frontend/integrations/yshop/food-h5"
 
-    $env:JAVA_HOME = $MavenJavaHome17
-    $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
+    $env:JAVA_HOME = Resolve-JavaHome $MavenJavaHome17 '17' 'yshop-server'
+    $env:PATH = (Join-Path $env:JAVA_HOME 'bin') + [IO.Path]::PathSeparator + $env:PATH
+    Write-Host "  JAVA_HOME = $env:JAVA_HOME"
     Write-Host '  -> yshop-server (Maven, Java 17)'
     Run 'mvn' @('-B', '-ntp', '-pl', 'yshop-server', '-am', '-DskipTests', 'package') $yshopServer
     Run 'docker' @('build', '--file', "$repoRoot/deploy/k3s/images/yshop-server.Dockerfile",
@@ -111,13 +154,13 @@ if (-not $SkipBuild) {
     }
     else {
         Write-Host '  -> yshop-admin-web（pnpm 源码构建，输出 dist-k3s）'
-        Run 'pnpm.cmd' @('install', '--frozen-lockfile') $yshopAdminWeb
+        Run 'pnpm' @('install', '--frozen-lockfile') $yshopAdminWeb
         Remove-Item "$yshopAdminWeb/dist-k3s" -Recurse -Force -ErrorAction SilentlyContinue
         # 注意：不要在 PowerShell 里用 $env:VITE_BASE_URL = '' 来清空基址——
         # .NET 把“设为空串”当作删除变量，Vite 会静默回落到 .env.prod 的值。
         # 相对基址统一由 admin-web/.env.prod 的 VITE_BASE_URL='' 提供。
         $env:VITE_BASE_PATH = '/'; $env:VITE_API_URL = '/admin-api'; $env:VITE_OUT_DIR = 'dist-k3s'
-        Run 'pnpm.cmd' @('build:prod') $yshopAdminWeb
+        Run 'pnpm' @('build:prod') $yshopAdminWeb
         Remove-Item Env:VITE_BASE_PATH, Env:VITE_API_URL, Env:VITE_OUT_DIR -ErrorAction SilentlyContinue
         if (-not (Test-Path "$yshopAdminWeb/dist-k3s/index.html")) { Fail 'admin-web 源码构建未产出 dist-k3s/index.html' }
 
@@ -149,7 +192,7 @@ if (-not $SkipBuild) {
         Write-Host '  -> yshop-food-h5（uni-app CLI 源码构建，约 5 分钟）'
         $h5Builder = "$yshopFoodH5/scripts/build-minipay-h5-cli.ps1"
         if (-not (Test-Path $h5Builder)) { Fail "缺少 H5 源码构建脚本：$h5Builder" }
-        Run 'powershell' @('-ExecutionPolicy', 'Bypass', '-File', $h5Builder,
+        Run $script:PowerShellExe @('-ExecutionPolicy', 'Bypass', '-File', $h5Builder,
             '-ApiBaseUrl', '/app-api', '-RouterBase', '/') $yshopFoodH5
         if (-not (Test-Path "$yshopFoodH5/unpackage/dist/build/h5-minipay/index.html")) {
             Fail 'H5 源码构建未产出 unpackage/dist/build/h5-minipay/index.html'
@@ -183,21 +226,21 @@ else {
 
 # ------------------------------------------------- 2.5) 产物来源校验（漂移检测）
 Stage '校验外卖 H5 预构建产物（哈希锁定，防悄悄改动）'
-& powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot/verify-h5-bundle.ps1"
+& $script:PowerShellExe -NoProfile -ExecutionPolicy Bypass -File "$PSScriptRoot/verify-h5-bundle.ps1"
 if ($LASTEXITCODE -ne 0) { Fail 'H5 产物与 BUNDLE_PROVENANCE.md 记录不一致；若是有意修改，运行 verify-h5-bundle.ps1 -Update 并说明原因' }
 Ok 'H5 产物来源一致'
 
 # ---------------------------------------------------------------- 3) 推送 + digest
 if (-not $SkipPush) {
     Stage '推送镜像并记录 digest'
-    Run 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "$PSScriptRoot/push-and-record-digests.ps1",
+    Run $script:PowerShellExe @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "$PSScriptRoot/push-and-record-digests.ps1",
         '-Registry', $Registry, '-Namespace', $Namespace) $PSScriptRoot
     Ok 'digest 已记录'
 }
 
 # ------------------------------------------------------- 4) 生成 digest 锁定 overlay
 Stage '生成 digest 锁定 overlay'
-Run 'powershell.exe' @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "$PSScriptRoot/pin-image-digests.ps1") $PSScriptRoot
+Run $script:PowerShellExe @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "$PSScriptRoot/pin-image-digests.ps1") $PSScriptRoot
 Ok 'overlay 已生成: deploy/k3s/overlays/digest-pinned'
 
 Stage '校验 overlay 可构建'

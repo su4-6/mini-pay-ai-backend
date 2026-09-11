@@ -1,16 +1,27 @@
 name: build-push-digest-pin
 
-# 把 scripts/k3s/ci-pipeline.ps1 的流程接到 CI 系统。
-# 关键约定：
-#   - 所有镜像使用同一个 release 版本号（手动触发或 git tag 推导）
-#   - 推送后记录 digest，并生成 deploy/k3s/overlays/digest-pinned（digest 锁定）
-#   - 生产部署只用 digest-pinned overlay，不再直接用 base
+# 把 scripts/k3s/ci-pipeline.ps1 接到 CI。工作流本身不再重复实现构建逻辑，
+# 也不再自己改写清单 tag —— 那是单一事实来源脚本的职责。
+#
+# 为什么要改成"复用脚本"：
+#   旧版本只构建 8 个 Java 服务 + yshop-server，却用 sed 把 base/workloads 下
+#   **所有** workload 的镜像 tag 无条件重写成新版本号。结果是
+#   admin-web / merchant-web / ops-web / yshop-admin-web / yshop-food-h5
+#   这 5 个镜像的 tag 指向了根本不存在的版本。
+#   ci-pipeline.ps1 已经修好这一点（只在真正构建镜像时才对齐 tag），
+#   所以这里直接调用它，不再各维护一套逻辑。
+#
+# 两个仓库都要检出：前端（web + yshop admin-web/food-h5 + Android）是独立仓库。
 on:
   workflow_dispatch:
     inputs:
       version:
         description: '镜像版本号（例如 0.1.0-k3s.4）'
         required: true
+      push:
+        description: '是否推送到镜像仓库'
+        type: boolean
+        default: true
   push:
     tags:
       - 'v*'
@@ -18,12 +29,51 @@ on:
 env:
   REGISTRY: docker.io
   NAMESPACE: ${{ github.repository_owner }}
+  FRONTEND_REPOSITORY: ${{ github.repository_owner }}/mini-pay-ai-frontend
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: 检出后端仓库
+        uses: actions/checkout@v4
+        with:
+          path: backend
+
+      - name: 检出前端仓库
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.FRONTEND_REPOSITORY }}
+          path: frontend
+
+      # ci-pipeline.ps1 需要两个 JDK：MiniPay 用 21，yshop-server 用 17。
+      # 脚本会自动探测（优先 JAVA_HOME，其次 /usr/lib/jvm 等常见位置），
+      # 所以这里让 setup-java 把 21 设为 JAVA_HOME、apt 把 17 装进 /usr/lib/jvm。
+      - name: 安装 JDK 21（设为 JAVA_HOME）
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: 安装 JDK 17
+        run: sudo apt-get update && sudo apt-get install -y openjdk-17-jdk
+
+      - name: 安装 Node 与 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: 安装 kubectl 与 PowerShell
+        run: |
+          set -e
+          curl -fsSLo /tmp/kubectl "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          sudo install -m 0755 /tmp/kubectl /usr/local/bin/kubectl
+          # runs-on 镜像自带 pwsh，这里只做兜底
+          command -v pwsh >/dev/null || sudo apt-get install -y powershell
 
       - name: 解析版本号
         id: ver
@@ -34,61 +84,36 @@ jobs:
             echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '21'
-
-      - name: 安装 Maven
-        run: sudo apt-get update && sudo apt-get install -y maven
-
       - name: 登录镜像仓库
+        if: github.event_name != 'workflow_dispatch' || inputs.push
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
-      - name: 构建 8 个 Java/BFF 服务
+      # 一条命令完成：构建 8 个 Java/BFF + 3 个功能前端 + yshop 三件套
+      #（admin-web 与 food-h5 均从源码构建）→ 对齐 tag → 推送 → 记录 digest
+      # → 生成 digest 锁定 overlay → 校验 H5 产物哈希。
+      - name: 运行流水线
+        env:
+          PUSH_FLAG: ${{ (github.event_name != 'workflow_dispatch' || inputs.push) && '1' || '' }}
+        working-directory: backend
         run: |
           set -e
-          V="${{ steps.ver.outputs.version }}"
-          for m in identity-service wallet-service payment-service commerce-service \
-                   agent-service consumer-bff management-bff admin-bff; do
-            mvn -B -ntp -pl "services/$m" -am -DskipTests package
-            docker build -f docker/k3s-service.Dockerfile \
-              --build-arg "MODULE=services/$m" \
-              -t "$NAMESPACE/$m:$V" .
-          done
-
-      - name: 构建 YShop 后端（Java 17）
-        run: |
-          set -e
-          V="${{ steps.ver.outputs.version }}"
-          sudo apt-get install -y openjdk-17-jdk
-          export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
-          cd integrations/yshop/server
-          mvn -B -ntp -pl yshop-server -am -DskipTests package
-          cd -
-          docker build -f deploy/k3s/images/yshop-server.Dockerfile \
-            -t "$NAMESPACE/yshop-server:$V" integrations/yshop/server
-
-      - name: 推送并记录 digest
-        run: |
-          set -e
-          V="${{ steps.ver.outputs.version }}"
-          # 先把清单 tag 对齐到本次版本
-          find deploy/k3s/base/workloads -name '*.yaml' -print0 | \
-            xargs -0 sed -i -E "s#(image: *$NAMESPACE/[A-Za-z0-9._-]+):[^[:space:]@]+#\1:$V#g"
-          pwsh -NoProfile -ExecutionPolicy Bypass \
-            -File scripts/k3s/push-and-record-digests.ps1 -Registry "$REGISTRY" -Namespace "$NAMESPACE"
-          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/k3s/pin-image-digests.ps1
+          ARGS=(-Version "${{ steps.ver.outputs.version }}"
+                -Namespace "${{ env.NAMESPACE }}"
+                -Registry "${{ env.REGISTRY }}"
+                -FrontendDir "$GITHUB_WORKSPACE/frontend")
+          if [ -z "$PUSH_FLAG" ]; then ARGS+=(-SkipPush); fi
+          pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/k3s/ci-pipeline.ps1 "${ARGS[@]}"
 
       - name: 校验 digest overlay
+        working-directory: backend
         run: kubectl kustomize deploy/k3s/overlays/digest-pinned > /dev/null
 
       - name: 归档 digest 清单
         uses: actions/upload-artifact@v4
         with:
           name: image-digests
-          path: deploy/k3s/generated/image-digests.json
+          path: backend/deploy/k3s/generated/image-digests.json

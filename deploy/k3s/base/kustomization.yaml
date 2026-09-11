@@ -22,3 +22,14 @@ resources:
   - routes/public-api-routes.yaml
   - routes/minipay-web-routes.yaml
   - routes/yshop-routes.yaml
+
+# 统一放宽探针阈值。
+# 各 workload 原本是 readiness/liveness failureThreshold=3 + timeoutSeconds=2
+# （部分文件未声明 timeoutSeconds，走默认 1s）。单节点宿主在 Android 模拟器与
+# Gradle 构建同时抢资源时，3 次 2 秒超时即判失败，曾导致全部 15 个 Pod
+# 在同一时段被 kill（exit=137）。
+# 放宽后仍能在真实故障时及时重启，但不会被瞬时负载抖动误杀。
+patches:
+  - path: patches/probe-tuning.json
+    target:
+      kind: Deployment
