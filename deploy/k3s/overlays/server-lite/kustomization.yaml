@@ -1,0 +1,38 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: minipay
+
+# server-lite：在 overlays/server 之上做内存瘦身，用于规格较小的服务器。
+# 只改「数字」，不改代码、不改镜像、不改拓扑，出问题去掉本 overlay 即回到 server。
+#
+# 原理：所有 Java 服务的启动参数是 -XX:MaxRAMPercentage=75.0，
+# 即堆大小 = 容器 memory limit 的 75%。原 limit 是 1Gi（yshop-server 2Gi），
+# 意味着 JVM 按 768MB / 1.5GB 规划堆 —— 对低流量部署纯属浪费。
+# 调低 limit 后 JVM 自动缩堆，无需修改镜像里的启动命令。
+resources:
+  - ../server
+
+patches:
+  # 1) 所有工作负载：下调 requests/limits，并把 JVM 调优注入共享 ConfigMap。
+  #    JAVA_TOOL_OPTIONS 是 JVM 约定变量，JVM 启动时自动读取并应用；
+  #    非 JVM 容器（nginx）会忽略它。
+  - target: {kind: Deployment}
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests: {cpu: 100m, memory: 192Mi}
+          limits: {cpu: "1", memory: 400Mi}
+  - target: {kind: ConfigMap, name: minipay-runtime}
+    patch: |-
+      - op: add
+        path: /data/JAVA_TOOL_OPTIONS
+        value: "-XX:MaxMetaspaceSize=128m -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -XX:+ExitOnOutOfMemoryError"
+  # 2) yshop-server 框架较重，给稍宽的额度（仍远低于原来的 2Gi）
+  - target: {kind: Deployment, name: yshop-server}
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests: {cpu: 200m, memory: 384Mi}
+          limits: {cpu: "1", memory: 768Mi}
