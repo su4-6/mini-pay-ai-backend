@@ -103,6 +103,6 @@ yshop 后台 `admin/admin123`。
 | `scripts/k3s/` | 构建、推送、引导（`bootstrap-server.ps1`）、NGF 调优、演示账号 SQL |
 | `docs/开发配套资料/联调记录/` | 前后端联调记录与脱敏证据模板 |
 | `docs/aliyun-oss-sms.md` | 阿里云 OSS、短信真实渠道的开通与验证 |
-| `.env.example` · `.env.production.example` | 环境变量示例；仅用于演示，禁止提交真实凭据 |
+| `.env.example` · `.env.production.example` | 环境变量名契约（本地 / 线上）；线上真实取值放 `overlays/server/private/*.env`，禁止提交真实凭据 |
 
 当前初始化阶段只构建身份、钱包、支付、商务、Agent 与三个 BFF。所有默认口令仅用于本地演示，真实密钥不得提交到仓库。
