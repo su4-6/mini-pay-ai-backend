@@ -1,0 +1,48 @@
+# 服务器内存收敛覆盖文件（仅在 shanghai-vm 上叠加使用，本地默认不加载）
+#
+# 用法：
+#   docker compose -f compose.yaml -f compose.server.yaml --env-file .env.local up -d
+#
+# 目的：这台机器只有 3723 MiB 物理内存，而同一台机器还要跑 K3s 里的
+# 9 个 Java 服务 + nginx Gateway。按 Docker Desktop 默认参数，两个 MySQL
+# 实例各自吃掉 ~425 MiB、Seata 吃掉 ~384 MiB，加起来 1.3 GiB，K3s 就没地方了。
+#
+# 这里只调参数，不动任何数据卷，重启后数据保留。
+name: minipay-infra
+
+services:
+  # MySQL 8.4 官方镜像的 entrypoint 在 command 首参以 '-' 开头时会把它们透传给 mysqld。
+  # 演示数据量很小（每个库几十张表、无大表扫描），64 MiB buffer pool 足够；
+  # performance_schema 是 MySQL 8 启动后最大的常驻内存项之一，演示环境直接关掉。
+  minipay-mysql:
+    command:
+      - --innodb-buffer-pool-size=64M
+      - --innodb-buffer-pool-instances=1
+      - --innodb-log-buffer-size=8M
+      - --innodb-flush-method=O_DIRECT
+      - --performance-schema=OFF
+      - --skip-name-resolve
+      - --max-connections=120
+      - --table-open-cache=256
+      - --tmp-table-size=16M
+      - --max-heap-table-size=16M
+
+  yshop-mysql:
+    command:
+      - --innodb-buffer-pool-size=64M
+      - --innodb-buffer-pool-instances=1
+      - --innodb-log-buffer-size=8M
+      - --innodb-flush-method=O_DIRECT
+      - --performance-schema=OFF
+      - --skip-name-resolve
+      - --max-connections=120
+      - --table-open-cache=256
+      - --tmp-table-size=16M
+      - --max-heap-table-size=16M
+
+  # Seata 默认按宿主机总内存算 Xms/Xmx，会把 256m/512m 顶满，这里压到 128m/256m。
+  seata-server:
+    environment:
+      JVM_XMS: "128m"
+      JVM_XMX: "256m"
+      JVM_MaxDirectMemorySize: "96m"

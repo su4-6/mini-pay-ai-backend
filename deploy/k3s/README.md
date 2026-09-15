@@ -1,66 +1,124 @@
 # MiniPay Kubernetes / K3s 部署入口
 
-最终架构：K3s 管业务与入口，Compose 管中间件。本地先使用 Docker Desktop Kubernetes 验证。
+最终架构：**K3s 管业务与入口，Compose 管中间件**。
+当前线上环境是腾讯云单节点（4 vCPU / 4 GB / Ubuntu 24.04），overlay 使用 `server-lite`。
 
-- [总蓝图](../../docs/k3s-deployment-blueprint.md)：为什么这样部署、域名/端口、顺序和回滚。
-- [验收台账](../../docs/k3s-acceptance.md)：已通过与待验证，防止漏掉网页、App、数据或语音。
-- [当前阶段操作](../compose-infra/README.md)：中间件和 Pod 网络验收，一条阶段命令。
-
-截至 2026-09-08，旧 YShop 基线在内的 14 个固定标签镜像已导入 Docker Desktop Kubernetes；14 个 Deployment、14 个 Service、Gateway 和 10 个 HTTPRoute 已通过运行验收。证据见 `deploy/k3s/generated/local-platform.json`。这只表示旧版本本地技术平台已通过，支付/TCC、RabbitMQ 业务事件、浏览器 OAuth、逐页、Android、数据重建与备份恢复仍须单独验收。
-
-2026-09-09 已在两个 clean 仓库内完成 YShop Lite 的三镜像构建准备：`yshop-server`、`yshop-food-h5`、`yshop-admin-web` 均使用标签 `0.1.0-k3s.2-lite.1`。后端运行时边界检查、关键单元测试、两个 Nginx 镜像配置检查及仅含 3 个工作负载的 Kustomize 渲染已通过；新镜像尚未导入 Kubernetes，旧 YShop Pod 未被替换。切换必须由用户执行下方独立阶段命令，并在业务验收失败时恢复旧标签。
-
-## YShop Lite 三工作负载切换
-
-```powershell
-# 构建和测试三镜像；不推送、不部署
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/k3s/build-yshop-lite-images.ps1
-
-# 服务端 dry-run、导入三个镜像、只更新三个 YShop 工作负载并等待 Ready
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/k3s/deploy-yshop-lite-local.ps1
+```
+浏览器/App → Cloudflare（DNS、TLS、边缘缓存、Worker 落地页）
+           → K3s ServiceLB（80/443）
+           → NGINX Gateway Fabric（控制面 + 数据面）
+           → 11 条 HTTPRoute → 业务 Pod（8 个 Java 服务 + 3 个 Web 静态 + 维护页）
+           → 宿主机 Docker Compose 中间件（MySQL×2 / Redis×2 / RabbitMQ / Seata）
 ```
 
-第二条命令会自动发现 Kubernetes 节点，但会改变本地集群；执行前应保留当前三个 YShop 镜像标签作为回滚基线。它不会修改 Compose 数据卷或数据库表。
+- 网关：**NGINX Gateway Fabric 2.7.0** + Gateway API v1.6.1，`GatewayClass=nginx`，
+  Gateway `minipay-gateway`（listeners `http:80` + `https:443`，TLS 由 Cloudflare Origin CA 证书提供）。
+- 不再使用仓库早期的单机静态 nginx 反代（`deploy/nginx/`）与「三仓库 Compose 生产栈」
+  （`compose.production.yml` / `compose.edge.yml` / `scripts/deploy-production-stack.sh` 等）；
+  这些文件已随 K3s 迁移删除，需要时从 Git 历史取回。
 
-## Wallet 完整样板：已完成，可用于复查
+## 目录与 overlay
 
-在仓库根目录运行：
+| 路径 | 作用 |
+| --- | --- |
+| `base/` | 全部工作负载、路由、ConfigMap；`workloads/*.yaml` 一个 Deployment+Service 一份 |
+| `base/routes/` | `minipay-web-routes.yaml`（前端与 BFF/identity 分流）、`public-api-routes.yaml`、`yshop-routes.yaml` |
+| `base/config/nginx-proxy.yaml` | **NginxProxy**：声明 NGF 数据面 resources（NGF reconcile 不会覆盖） |
+| `base/workloads/maintenance-page.yaml` | 外卖「维护中」静态页工作负载 |
+| `overlays/local/` | 本地 K8s（`*.minipay.localhost`） |
+| `overlays/server/` | 线上：真实域名、Cloudflare Origin CA、外部中间件地址、私密 env（不进 Git） |
+| `overlays/server-lite/` | 在 `server` 之上做**内存瘦身**：limits 400Mi（yshop 768Mi）、JVM 参数、`maxSurge=0` |
+| `overlays/server/private/` | Secret 与 digest 锁定组件（**不进 Git**：`identity.env`、`payment.env`、`jwt-*.pem`、`digests/`） |
+| `generated/image-digests.json` | 已推送镜像的 tag → digest 记录 |
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/k3s/deploy-wallet-local.ps1 -Action Import
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/k3s/deploy-wallet-local.ps1 -Action Deploy
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/k3s/deploy-wallet-local.ps1 -Action Verify
+## 应用清单（改完清单后）
+
+```bash
+cd <repo root>
+k3s kubectl kustomize deploy/k3s/overlays/server-lite | kubectl apply --server-side --force-conflicts -f -
+
+# NGF 控制面资源/滚动策略（数据面 resources 已在 NginxProxy 里，无需重复）
+sudo bash scripts/k3s/apply-ngf-tuning.sh
 ```
 
-三步分别只做：把 Identity/Wallet 镜像导入自动发现的 Kubernetes 节点；仅应用 Identity/Wallet 并等待 Ready；验证健康、EndpointSlice、Wallet 数据库隔离、RabbitMQ、Seata 与 Identity JWK。该样板已通过，通常无需重复执行。
+> 首次在服务器上准备环境（生成私密配置、runtime.env、应用清单）用
+> `scripts/k3s/bootstrap-server.ps1 -InfraEnvFile deploy/compose-infra/.env.local -ReuseCryptoFrom <overlays/server/private>`；
+> 它不会覆盖既有 JWT 密钥对，重跑前请先备份 `private/jwt-*.pem`。
 
-## 全量技术平台的四个批量阶段
+## 镜像：构建 / 推送 / 拉取
 
 ```powershell
-# 1. 全仓测试、构建并核对 14 个本地镜像；不推送
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/k3s/build-all-images.ps1
-
-# 2. 静态规则、私密配置、GatewayClass 与服务端 dry-run；不应用
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/k3s/preflight-local.ps1
-
-# 3. 自动导入镜像，按依赖顺序部署并等待 14 个 Deployment Ready
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/k3s/deploy-local.ps1
-
-# 4. 验证 Deployment、EndpointSlice、健康检查、Gateway、HTTPRoute 与日志
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/k3s/acceptance-local.ps1
+# 构建（示例：后端服务与前端静态镜像）
+mvnw.cmd -B -q -pl services/<svc> -am package -DskipTests
+docker build -f docker/k3s-service.Dockerfile --build-arg MODULE=<svc> -t suqihang/<svc>:<tag> services
+docker build -f <frontend>/docker/k3s-web.Dockerfile --build-arg APP=ops-web -t suqihang/ops-web:<tag> <frontend>
+docker push suqihang/<svc>:<tag>
 ```
 
-第一条构建阶段包含：
+- 推送后把新 digest 写进 `generated/image-digests.json` 与 `overlays/server/private/digests/kustomization.yaml`，
+  再按上面的命令 apply（清单按 digest 锁定，可复现）。
+- **纯内网/受限网络兜底**：若服务器无法从 Docker Hub 拉新 digest（被 DNS 劫持时会出现
+  `dial tcp: lookup registry-1.docker.io: no such host`），可改用
 
-1. 自动使用本机 JDK 21，先删除旧 `target`，再对 8 个 Java 模块执行一次完整测试（含可运行的 Testcontainers 集成测试）。
-2. 测试通过后封装 8 个 Java/BFF、3 个 MiniPay Web、YShop Server、Food H5 和 YShop Admin，共 14 个固定标签镜像。
+  ```bash
+  docker save suqihang/<img>:<tag> -o img.tar
+  scp img.tar <server>:/tmp/
+  ssh <server> 'sudo k3s ctr -n k8s.io images import /tmp/img.tar'   # 注意 -n k8s.io
+  ```
 
-这些本地阶段不会推送 Docker Hub、不会修改 DNS/代理/hosts，也不会删除或重建 Compose 数据卷。Food H5 需要本机 HBuilderX 编译器；缺失时构建阶段会明确停止。
+  并在 `overlays/server/kustomization.yaml` 里用 tag + `imagePullPolicy: IfNotPresent` 覆盖 digest 引用。
+  网络恢复后删掉该 patch 即回到 digest 锁定。
 
-当前构建镜像使用 [docker/k3s-service.Dockerfile](../../docker/k3s-service.Dockerfile)，构建上下文只允许已验证的 JAR 进入；Java 21 运行时镜像已固定摘要。镜像版本统一记录在 `versions.env.example`。
+## 外卖（YShop）栈的下线与恢复
 
-## 服务器阶段（本地业务验收之后）
+外卖模块（`yshop-server` / `yshop-food-h5` / `yshop-admin-web`）在内存紧张时整体下线，
+两个域名由维护页顶替（不再返回 503）：
 
-`scripts/k3s/push-images.ps1` 由你登录 Docker Hub 后执行；它推送 14 个镜像并生成被 Git 忽略的 digest 组件。服务器 overlay 必须另外准备私密配置、Docker Hub 拉取 Secret、Cloudflare Token 和 ACME 邮箱，通过 `preflight-server.sh` 后才能应用。不得复制本地 `192.168.65.254`。
+```bash
+# 下线（server overlay 里已有 replicas=0 的 patch，这里是对运行中的集群直接生效）
+kubectl -n minipay scale deploy yshop-server yshop-food-h5 yshop-admin-web --replicas=0
+kubectl -n minipay apply -f <render>            # 路由：/ 规则指向 maintenance-page（见 base/routes/yshop-routes.yaml）
 
-集中学习安排见 [K3s 全链路集中学习](../../docs/k3s-concentrated-learning.md)：只在本地全链路通过后开始，用真实 Pod、日志和配置集中讲总链路、Wallet/Payment/TCC、OAuth/BFF、YShop/RabbitMQ、Agent SSE 以及固定故障定位顺序。
+# 恢复
+kubectl -n minipay scale deploy yshop-server yshop-food-h5 yshop-admin-web --replicas=1
+# 并把 base/routes/yshop-routes.yaml 中 / 规则的 backendRefs 改回
+#   yshop-food-h5 / yshop-admin-web，然后重新 apply
+```
+
+维护页镜像：`docker build -f deploy/k3s/maintenance/Dockerfile -t suqihang/maintenance-page:0.1.0 deploy/k3s/maintenance`
+
+## 演示数据与账号
+
+```bash
+# 服务器演示账号（运营/商户/系统管理员）绑定与角色对齐，幂等
+docker exec -e MYSQL_PWD=<pwd> -i minipay-infra-minipay-mysql-1 \
+  mysql -uroot --default-character-set=utf8mb4 minipay_identity < scripts/k3s/sql/provision-server-demo-accounts.sql
+```
+
+演示账号（密码 `MiniPay@123456`）：运营 `13800138000`、商户 `13900000009`（角色必须是 `merchant_owner`，
+否则管理端「商户所有人」计数为 0）、系统管理员 `13800138002`；App 短信固定 `123456`。
+
+## 常用运维与验收命令
+
+```bash
+kubectl -n minipay get pods -o wide
+kubectl -n minipay get httproute; kubectl -n minipay get gateway
+kubectl -n nginx-gateway get pods
+kubectl get --raw='/readyz?verbose' | grep -E 'etcd|readyz'
+free -m; uptime
+
+# 逐页验收（本地脚本，不入库）
+node _codex_digest/accept/cdp-perf.mjs https://ops.su46proj.site/ops/login ops-login
+node _codex_digest/accept/cdp-portal-sweep.mjs sweep ops
+node _codex_digest/accept/cdp-portal-sweep.mjs textscan ops
+node _codex_digest/accept/cdp-portal-sweep.mjs upload merchant
+```
+
+## 内存与容量注意事项（单节点）
+
+- 物理内存 3.7 GB，而全部 Deployment 的 memory limits 合计约 5.9 GB：**必须靠 `server-lite` 与下线非必要负载控制峰值**，
+  否则节点会持续换页 → etcd 健康检查失败 → 网关控制面（NGF）崩溃循环 → 数据面无法下发配置。
+  推荐把服务器内存升到 8 GB。
+- 滚动更新策略：业务 Deployment 用 `maxSurge=0/maxUnavailable=1`（先停后起，避免内存峰值翻倍）；
+  NGF 数据面保持 NGF 默认（单副本下等价于先起新后停旧），**不要**给数据面设 `maxSurge=0`——
+  控制面不可用时会把唯一就绪的网关 Pod 缩掉，导致全站 521。

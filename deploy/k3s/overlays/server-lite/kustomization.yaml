@@ -36,3 +36,25 @@ patches:
         value:
           requests: {cpu: 200m, memory: 384Mi}
           limits: {cpu: "1", memory: 768Mi}
+  # 3) 关键：禁止滚动更新时「多起一个 Pod」。
+  #
+  #    这是实测踩出来的坑：K8s 默认 maxSurge=25%，对单副本 Deployment 就等于
+  #    「先起新 Pod、再停旧 Pod」，而 9 个 Java 服务的实际 RSS 合计约 2.1 GB。
+  #    本机只有 3723 MiB，瞬时需求直接翻倍 → 节点疯狂换页（load average 冲到 23）、
+  #    API server 无响应、旧 Pod 卡住不退出，反而又多占 760 MB，形成死锁。
+  #
+  #    把 maxSurge 压到 0、maxUnavailable 放到 1，滚动更新变成「先停旧、再起新」。
+  #    代价是每个服务有几十秒不可用（单副本本来也没有冗余），
+  #    换来的是更新过程中内存峰值不再翻倍。
+  #
+  #    用 op: add 而不是 replace —— base 渲染出来的清单里通常没有 spec.strategy 字段，
+  #    replace 会因为路径不存在而失败；add 对「不存在则创建、存在则覆盖」都成立。
+  - target: {kind: Deployment}
+    patch: |-
+      - op: add
+        path: /spec/strategy
+        value:
+          type: RollingUpdate
+          rollingUpdate:
+            maxSurge: 0
+            maxUnavailable: 1

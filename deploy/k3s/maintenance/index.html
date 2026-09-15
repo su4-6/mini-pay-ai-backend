@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MiniPay 外卖服务维护中</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    padding: 28px; background: radial-gradient(1100px 560px at 50% -10%, #e8f1ff 0%, #f5f8fc 55%, #eef2f8 100%);
+    color: #101828; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+      "Hiragino Sans GB", "Microsoft YaHei", "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { width: min(680px, 100%); }
+  .brand { display: flex; align-items: center; gap: 13px; margin-bottom: 20px; }
+  .mark {
+    width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center;
+    background: linear-gradient(135deg, #1677ff, #7c5cff); color: #fff; font-weight: 800;
+    font-size: 19px; letter-spacing: -0.5px; box-shadow: 0 10px 24px rgba(22, 119, 255, 0.22);
+  }
+  .brand strong { display: block; font-size: 19px; letter-spacing: -0.3px; }
+  .brand small { display: block; margin-top: 2px; color: #98a2b3; font-size: 12px; }
+  .card {
+    background: #fff; border: 1px solid #e7edf5; border-radius: 18px; padding: 30px 32px 26px;
+    box-shadow: 0 18px 48px rgba(31, 55, 88, 0.10);
+  }
+  .icon {
+    width: 54px; height: 54px; border-radius: 16px; display: grid; place-items: center; margin-bottom: 16px;
+    background: linear-gradient(135deg, #fff4e5, #ffe9cc); color: #b54708; font-size: 26px;
+  }
+  h1 { margin: 0 0 10px; font-size: 22px; letter-spacing: -0.4px; }
+  p { margin: 0 0 14px; color: #475467; font-size: 13.5px; line-height: 1.8; }
+  .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 20px 0 4px; }
+  .item { padding: 14px 16px; border: 1px solid #e7edf5; border-radius: 12px; background: #f8fafc; }
+  .item b { display: block; font-size: 13px; color: #344054; margin-bottom: 4px; }
+  .item span { font-size: 12.5px; color: #667085; line-height: 1.7; }
+  .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 22px; }
+  a.btn {
+    display: inline-block; padding: 11px 20px; border-radius: 10px; font-size: 14px; font-weight: 600;
+    text-decoration: none; transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  a.primary { background: #1677ff; color: #fff; box-shadow: 0 8px 20px rgba(22, 119, 255, 0.24); }
+  a.ghost { border: 1px solid #d0d5dd; color: #344054; background: #fff; }
+  a.btn:hover { transform: translateY(-1px); }
+  footer {
+    margin-top: 18px; padding-top: 14px; border-top: 1px solid #edf1f6;
+    color: #98a2b3; font-size: 12px; line-height: 1.9;
+  }
+  footer a { color: #98a2b3; text-decoration: none; border-bottom: 1px dotted #cbd5e1; }
+  @media (max-width: 560px) { .grid { grid-template-columns: 1fr; } .card { padding: 24px 20px; } }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand">
+      <div class="mark">MP</div>
+      <div>
+        <strong>MiniPay AI 外卖服务</strong>
+        <small>该站点暂时处于维护状态</small>
+      </div>
+    </div>
+    <div class="card">
+      <div class="icon">🛠</div>
+      <h1>外卖服务正在维护中</h1>
+      <p>
+        为了给这台演示服务器腾出内存余量，外卖模块（点餐 H5 与外卖后台）已临时下线，
+        支付、钱包、商户与运营后台不受影响，可正常使用。
+      </p>
+      <div class="grid">
+        <div class="item"><b>运营平台</b><span>商户审核、订单与资金查询</span></div>
+        <div class="item"><b>商户平台</b><span>门店资料、订单与钱包</span></div>
+        <div class="item"><b>系统管理平台</b><span>账号、审计与服务健康</span></div>
+        <div class="item"><b>Android App</b><span>登录、钱包、账单与消息正常</span></div>
+      </div>
+      <div class="actions">
+        <a class="btn primary" href="https://ops.su46proj.site/">前往运营平台</a>
+        <a class="btn ghost" href="https://merchant.su46proj.site/">前往商户平台</a>
+        <a class="btn ghost" href="https://su46proj.site/">返回项目主页</a>
+      </div>
+      <footer>
+        如需恢复外卖模块或了解更多，请联系 <a href="mailto:su_qihang@163.com">su_qihang@163.com</a>。<br />
+        <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">豫ICP备2026043015号</a>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

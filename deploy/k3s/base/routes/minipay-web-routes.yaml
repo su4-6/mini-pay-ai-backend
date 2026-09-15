@@ -13,6 +13,30 @@ spec:
         - {path: {type: PathPrefix, value: /logout}}
         - {path: {type: PathPrefix, value: /switch-login}}
       backendRefs: [{name: management-bff, port: 8080}]
+    # merchant-web 的前端是用 sub-path 构建的（umi base = /merchant/），index.html 里
+    # 引用 /merchant/umi.*.css、/merchant/framework.*.js…，但容器里的 nginx 把文件
+    # 摊在站点根目录 /usr/share/nginx/html/ 下，而且静态资源那段是
+    # `try_files $uri =404`（不像 SPA 兜底会回落到 index.html）。结果 HTML 能出来、
+    # JS/CSS 全部 404 → 页面白屏。这里把 /merchant/ 前缀剥掉再转给 nginx，$uri 就命中真实文件。
+    # 注意：必须排在 /merchant/oauth2 -> management-bff 那条之后（规则按顺序先匹配先赢），
+    # 否则 OAuth 回调会被这条抢走，登录直接断掉。
+    - matches: [{path: {type: PathPrefix, value: /merchant/}}]
+      filters:
+        - type: URLRewrite
+          urlRewrite: {path: {type: ReplacePrefixMatch, replacePrefixMatch: /}}
+      backendRefs: [{name: merchant-web, port: 80}]
+    # identity 登录后的回跳目标是 https://merchant.su46proj.site/login（没有 /merchant 前缀），
+    # 而 merchant-web 的 umi basename 是 /merchant/，路径不匹配 basename → React Router
+    # 匹配不到任何路由 → 白屏。把 /login 导回真正的入口。
+    # 注意顺序：/login/oauth2 必须继续走上面的 management-bff 规则，所以这条放在其后。
+    - matches: [{path: {type: PathPrefix, value: /login}}]
+      filters:
+        - type: RequestRedirect
+          requestRedirect: {path: {type: ReplaceFullPath, replaceFullPath: /merchant/}, statusCode: 302}
+    - matches: [{path: {type: Exact, value: /}}]
+      filters:
+        - type: RequestRedirect
+          requestRedirect: {path: {type: ReplaceFullPath, replaceFullPath: /merchant/}, statusCode: 302}
     - matches: [{path: {type: PathPrefix, value: /}}]
       backendRefs: [{name: merchant-web, port: 80}]
 ---
@@ -28,6 +52,15 @@ spec:
         - type: URLRewrite
           urlRewrite: {path: {type: ReplacePrefixMatch, replacePrefixMatch: /}}
       backendRefs: [{name: identity-service, port: 8080}]
+    # 关键：identity 的 authorize 端点必须按【真实路径】直达，不能走 /identity 剥前缀。
+    # 原因：剥前缀后 identity 只看到 /oauth2/authorize，它登录成功后会用【相对路径】
+    # 把浏览器重定向回 /oauth2/authorize —— 浏览器在 ops/admin 主机上，于是请求变成
+    # <host>/oauth2/authorize，而这条路径被下面的 BFF /oauth2 规则接走了 → 404
+    # （实测：Whitelabel Error Page 404，地址栏正是 ops.su46proj.site/oauth2/authorize）。
+    # 用 Exact 精确匹配放在 BFF 规则之前，identity 就收到原样路径，它发出的相对重定向
+    # 也就自然落在同主机的正确路径上。
+    - matches: [{path: {type: Exact, value: /oauth2/authorize}}]
+      backendRefs: [{name: identity-service, port: 8080}]
     - matches:
         - {path: {type: PathPrefix, value: /api}}
         - {path: {type: PathPrefix, value: /oauth2}}
@@ -35,6 +68,34 @@ spec:
         - {path: {type: PathPrefix, value: /logout}}
         - {path: {type: PathPrefix, value: /switch-login}}
       backendRefs: [{name: management-bff, port: 8080}]
+    # 同 merchant-web：ops-web 也是按 sub-path（/ops/）构建的，但 nginx 把文件放在
+    # 站点根目录，静态资源又是 `try_files $uri =404`，所以 /ops/umi.*.js 全部 404 → 白屏。
+    # 剥掉 /ops/ 前缀即可命中真实文件。
+    - matches: [{path: {type: PathPrefix, value: /ops/}}]
+      filters:
+        - type: URLRewrite
+          urlRewrite: {path: {type: ReplacePrefixMatch, replacePrefixMatch: /}}
+      backendRefs: [{name: ops-web, port: 80}]
+    # identity 登录后回跳到 https://ops.su46proj.site/login（没有 /ops 前缀），
+    # 而 ops-web 的 umi basename 是 /ops/ —— 路径不匹配 basename 时 React Router
+    # 匹配不到任何路由，页面只剩一个空的 antd 外壳（实测白屏）。这里导回真正入口。
+    # 顺序：/login/oauth2 仍走上面的 management-bff 规则。
+    - matches: [{path: {type: PathPrefix, value: /login}}]
+      filters:
+        - type: RequestRedirect
+          requestRedirect: {path: {type: ReplaceFullPath, replaceFullPath: /ops/login}, statusCode: 302}
+    # 入口重定向：把 "/" 交给应用本体（"/ops/"）。**绝不能**指向
+    # /oauth2/authorization/minipay-ops —— 那会造成死循环：
+    #   登录成功 → BFF 回跳 "/" → 又发起一次授权 → 又换一次 code → …
+    # 循环几轮后 BFF WebSession 里的 state/PKCE 被新一轮覆盖，校验不匹配 → /login?error。
+    # 实测证据（management-bff DEBUG 日志）：连续 4 次
+    #   "Saved SecurityContext ... roles=[platform_admin] ... Authenticated=true"
+    #   之后才出现 "Redirecting to '/login?error'"。
+    # 未登录时应用内的 AuthGate 会把请求导到 /login，再由上面的 /login 规则落到 /ops/login。
+    - matches: [{path: {type: Exact, value: /}}]
+      filters:
+        - type: RequestRedirect
+          requestRedirect: {path: {type: ReplaceFullPath, replaceFullPath: /ops/}, statusCode: 302}
     - matches: [{path: {type: PathPrefix, value: /}}]
       backendRefs: [{name: ops-web, port: 80}]
 ---
@@ -49,6 +110,15 @@ spec:
       filters:
         - type: URLRewrite
           urlRewrite: {path: {type: ReplacePrefixMatch, replacePrefixMatch: /}}
+      backendRefs: [{name: identity-service, port: 8080}]
+    # 关键：identity 的 authorize 端点必须按【真实路径】直达，不能走 /identity 剥前缀。
+    # 原因：剥前缀后 identity 只看到 /oauth2/authorize，它登录成功后会用【相对路径】
+    # 把浏览器重定向回 /oauth2/authorize —— 浏览器在 ops/admin 主机上，于是请求变成
+    # <host>/oauth2/authorize，而这条路径被下面的 BFF /oauth2 规则接走了 → 404
+    # （实测：Whitelabel Error Page 404，地址栏正是 ops.su46proj.site/oauth2/authorize）。
+    # 用 Exact 精确匹配放在 BFF 规则之前，identity 就收到原样路径，它发出的相对重定向
+    # 也就自然落在同主机的正确路径上。
+    - matches: [{path: {type: Exact, value: /oauth2/authorize}}]
       backendRefs: [{name: identity-service, port: 8080}]
     - matches:
         - {path: {type: PathPrefix, value: /api}}

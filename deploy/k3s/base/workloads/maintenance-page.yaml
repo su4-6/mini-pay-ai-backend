@@ -1,0 +1,73 @@
+# 外卖「维护中」友好页（变更 #47）
+#
+# 背景：为缓解节点内存压力，外卖栈（yshop-server / yshop-food-h5 / yshop-admin-web）
+# 被 scale 到 0，food.su46proj.site 与 food-admin.su46proj.site 会返回 503。
+# 这里额外起一个极小的静态页（nginx + 一个 index.html），把这两个域名的
+# 「页面」路由指过来，访问者看到的是一张说明页而不是错误页。
+#
+# 资源开销：requests 10m/12Mi，limits 100m/48Mi（相比 yshop-server 的 ~600 MB 可忽略）。
+# 恢复外卖：把 base/routes/yshop-routes.yaml 里 `/` 规则的 backendRefs 改回
+# yshop-food-h5 / yshop-admin-web，并把三个 yshop Deployment 拉回 1 副本。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: maintenance-page
+  namespace: minipay
+  labels:
+    app.kubernetes.io/name: maintenance-page
+    app.kubernetes.io/part-of: minipay
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxSurge: 0, maxUnavailable: 1}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: maintenance-page
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: maintenance-page
+    spec:
+      containers:
+        - name: web
+          image: suqihang/maintenance-page:0.1.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - {name: http, containerPort: 8080, protocol: TCP}
+          resources:
+            requests: {cpu: 10m, memory: 12Mi}
+            limits: {cpu: 100m, memory: 48Mi}
+          readinessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 2
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          # 必须有 startupProbe：base 的 patches/probe-tuning.json 会给所有 Deployment
+          # 的 startupProbe/readiness/liveness 补 timeoutSeconds，缺 startupProbe 会导致
+          # kustomize 渲染直接报错（add operation does not apply）。
+          startupProbe:
+            httpGet: {path: /healthz, port: http}
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+            initialDelaySeconds: 5
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: maintenance-page
+  namespace: minipay
+  labels:
+    app.kubernetes.io/name: maintenance-page
+spec:
+  selector:
+    app.kubernetes.io/name: maintenance-page
+  ports:
+    - {name: http, port: 80, targetPort: http, protocol: TCP}

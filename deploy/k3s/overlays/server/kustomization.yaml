@@ -5,8 +5,14 @@ namespace: minipay
 resources:
   - ../../base
   - gateway.yaml
-  - cluster-issuer.yaml
-  - certificate.yaml
+  # 这里不再包含 cluster-issuer.yaml 与 certificate.yaml。
+  # 原因：那两个文件依赖 cert-manager 的 CRD（ClusterIssuer / Certificate），而本
+  # 服务器走的是 Cloudflare Origin CA 路线 —— Cloudflare 已经代理了全部流量
+  # （SSL 模式 strict），Origin CA 证书正是为这种拓扑签发的，且长期有效；
+  # 而 cert-manager 会额外常驻约 200 MiB 内存（这台机器只有 3723 MiB，
+  # 中间件 + 9 个 Java 服务后已非常紧张），收益不成比例。
+  # TLS 物料来自 Secret minipay-wildcard-tls，由 scripts/k3s/install-origin-tls.sh
+  # 从 Cloudflare Origin CA 的证书/私钥文件生成；该 Secret 不进 Git。
 
 components:
   - private/digests
@@ -29,11 +35,33 @@ secretGenerator:
   - {name: yshop-runtime, envs: [private/yshop.env]}
 
 patches:
-  - target: {kind: Deployment}
+  # ---------------------------------------------------------------------------
+  # 外卖栈暂时下线（**变更 #47/#48**）：节点内存只有 3.7 GiB，yshop-server 单进程约 600 MiB。
+  # 关掉后 food./food-admin. 由 maintenance-page 顶一张「维护中」说明页（不再 503）。
+  #
+  # ⚠️ 恢复外卖时请删除下面三个 patch，并把工作负载拉回 1 副本：
+  #     kubectl -n minipay scale deploy yshop-server yshop-food-h5 yshop-admin-web --replicas=1
+  #     （同时把 base/routes/yshop-routes.yaml 的 `/` 规则 backendRefs 改回
+  #       yshop-food-h5 / yshop-admin-web）
+  - target: {kind: Deployment, name: yshop-server}
     patch: |-
-      - op: add
-        path: /spec/template/spec/imagePullSecrets
-        value: [{name: dockerhub-pull}]
+      - {op: replace, path: /spec/replicas, value: 0}
+  - target: {kind: Deployment, name: yshop-food-h5}
+    patch: |-
+      - {op: replace, path: /spec/replicas, value: 0}
+  - target: {kind: Deployment, name: yshop-admin-web}
+    patch: |-
+      - {op: replace, path: /spec/replicas, value: 0}
+  # ---------------------------------------------------------------------------
+  # 这里删掉了原先给所有 Deployment 注入 imagePullSecrets: dockerhub-pull 的 patch。
+  # 原因：docker.io/suqihang/* 这 14 个镜像仓库是公开的，服务器上匿名拉取已实测成功
+  # （digest 与 deploy/k3s/generated/image-digests.json 完全一致）。
+  # 而 imagePullSecrets 指向一个不存在的 Secret 只会产生 warning，拉取仍按匿名进行；
+  # 但若为了让 warning 消失而塞进一个凭证错误的 Secret，kubelet 会带着错误的
+  # Authorization 去拉取公开镜像并收到 401，反而把能跑的环境弄坏。所以这里保持不注入。
+  # 如果以后把镜像仓库改成私有，请在本文件恢复下面的 patch，并执行：
+  #   kubectl -n minipay create secret docker-registry dockerhub-pull \
+  #     --docker-server=docker.io --docker-username=<user> --docker-password=<token>
   - target: {kind: Deployment, name: consumer-bff}
     patch: |-
       - {op: replace, path: /spec/template/spec/containers/0/env/0/value, value: __Host-minipay-consumer}
@@ -83,3 +111,120 @@ patches:
     patch: |-
       - {op: replace, path: /spec/hostnames/0, value: food-admin.su46proj.site}
       - {op: replace, path: /spec/parentRefs/0/sectionName, value: https}
+  # ---------------------------------------------------------------------------
+  # 让 BFF 的 OAuth2 authorize 走「同主机」路径。
+  # （变更 #5 在本地验证过；变更 #34 在服务器实施；此处把它固化进清单，
+  #   否则重新 apply 会把 kubectl set env 打的那份冲掉。）
+  #
+  # 为什么必须这么做：identity 的会话 cookie 建立在「发起登录的那个主机」上
+  # （登录走同源反代 /identity/**）。若 BFF 把浏览器重定向到 identity 主机上的
+  # /oauth2/authorize，就是跨主机 → cookie 不发送 → 身份服务判定未登录 →
+  # 又弹回登录页。这就是「登录后要不跳别处、要不回到登录页」的根因。
+  #
+  # minipay-web-routes.yaml 里 ops / admin 主机本来就有 /identity 前缀反代到
+  # identity-service（带 URLRewrite 剥前缀），所以只要把 authorize 拉回同主机，
+  # 既不用放宽 cookie 作用域，也不用重建镜像。
+  #
+  # 用 op: add + path 以 /- 结尾（追加到 env 数组），避免依赖容器名与数组下标。
+  - target: {kind: Deployment, name: management-bff}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_MINIPAY_IDENTITY_AUTHORIZATION_URI
+          value: https://ops.su46proj.site/oauth2/authorize
+  - target: {kind: Deployment, name: admin-bff}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: SPRING_SECURITY_OAUTH2_CLIENT_PROVIDER_MINIPAY_IDENTITY_AUTHORIZATION_URI
+          value: https://admin.su46proj.site/oauth2/authorize
+  # ---------------------------------------------------------------------------
+  # 登出也必须同主机 —— 与 authorize 完全同一类问题。
+  #
+  # management-bff 的 IdentityLogoutSuccessHandler 拼的是
+  #   identityPublicUrl + "/session/logout?target=ops"
+  # 而 identityPublicUrl 来自 IDENTITY_PUBLIC_URL = https://identity.su46proj.site。
+  # 但登录后会话 cookie 是落在 ops 主机上的（登录走同源反代 /identity/**），
+  # 把浏览器送去 identity 主机 → 跨主机 → cookie 不发送 → identity 看不到会话、
+  # 清不掉 → 表现为「点了退出但没退出」。
+  #
+  # minipay.identity-public-url 在这个 BFF 里是「面向浏览器」的那一个
+  # （服务端互调用的是 minipay.identity-internal-url），所以覆盖它是安全的。
+  - target: {kind: Deployment, name: management-bff}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: MINIPAY_IDENTITY_PUBLIC_URL
+          value: https://ops.su46proj.site/identity
+  - target: {kind: Deployment, name: admin-bff}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: MINIPAY_IDENTITY_PUBLIC_URL
+          value: https://admin.su46proj.site/identity
+  # ---------------------------------------------------------------------------
+  # 三个 Web 前端暂时按 tag 引用（**变更 #44/#45**）。
+  #
+  # 本机 DNS（校园网 210.43.1.8/18）对 registry-1.docker.io 返回 NXDOMAIN，
+  # `docker push` 报 `dial tcp: lookup registry-1.docker.io: no such host`，
+  # 新镜像推不上 Docker Hub；而集群节点的镜像源（docker.m.daocloud.io）
+  # 也拿不到这些 digest → 用 digest 引用会 ImagePullBackOff。
+  #
+  # 处理：镜像已用 `docker save` + `k3s ctr -n k8s.io images import` 放进节点本地存储，
+  # 这里用 tag 覆盖 digest 引用 + IfNotPresent，节点直接命中本地镜像。
+  # Docker Hub 能推之后，推一次再删掉本 patch，即回到 digest 锁定
+  # （digests 组件里已经写好对应的新 digest）。
+  - target: {kind: Deployment, name: admin-web}
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: suqihang/admin-web:0.1.0-k3s.9
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+  - target: {kind: Deployment, name: ops-web}
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: suqihang/ops-web:0.1.0-k3s.9
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+  - target: {kind: Deployment, name: merchant-web}
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: suqihang/merchant-web:0.1.0-k3s.9
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+  # ---------------------------------------------------------------------------
+  # 关掉 identity-service 的邮件健康指示器（**变更 #38**）。
+  #
+  # 现象：`GET /actuator/health` 返回 503，{status:DOWN}，而 liveness/readiness 都是 UP，
+  #       BFF 探活汇总后前端一直挂着「部分服务暂不可用」。
+  # 证据（临时打开 show-details 拿到的原始 JSON）：
+  #   "mail":{"status":"DOWN","details":{"location":":465",
+  #           "error":"jakarta.mail.AuthenticationFailedException: failed to connect, no password specified?"}}
+  #   db / redis / rabbit / diskSpace / ssl / ping 全部 UP。
+  #
+  # 根因：application.yml 里写的是 `spring.mail.host: ${EMAIL_SMTP_HOST:}`。
+  #       Spring Boot 的 MailSenderAutoConfiguration 条件是「该属性**存在**」而不是「非空」，
+  #       于是 host="" 也照样装配出 JavaMailSender，并连带注册 MailHealthIndicator →
+  #       连不上 SMTP（也没配口令）→ DOWN → 整个 aggregate 变 DOWN。
+  #       application.yml 那句注释「host 为空时 Spring Boot 不装配 JavaMailSender」与事实不符。
+  #
+  # 为什么用配置而不是改代码：本环境 `EMAIL_PROVIDER=disabled`，邮件通道本来就没启用，
+  #       让一个「可选通道」把整体健康度拉黑没有意义；这个 env 只影响健康指示器，
+  #       不影响任何业务接口，且不用重建镜像、随时可回滚。
+  - target: {kind: Deployment, name: identity-service}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: MANAGEMENT_HEALTH_MAIL_ENABLED
+          value: "false"

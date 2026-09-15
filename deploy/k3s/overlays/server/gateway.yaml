@@ -5,6 +5,13 @@ metadata:
   namespace: minipay
 spec:
   gatewayClassName: nginx
+  # 把 NginxProxy 挂到本 Gateway（变更 #48）：数据面的 resources 由此声明，
+  # NGF 每次 reconcile 都会按它渲染，避免网关与业务争内存（变更 #46 的根因之一）。
+  infrastructure:
+    parametersRef:
+      group: gateway.nginx.org
+      kind: NginxProxy
+      name: minipay-gateway-proxy
   listeners:
     - name: http
       protocol: HTTP

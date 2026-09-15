@@ -1,0 +1,30 @@
+# NGF（nginx-gateway-fabric）数据面资源声明（变更 #48）
+#
+# 为什么需要它：数据面 Deployment（minipay-gateway-nginx）由 NGF 控制器完全托管，
+# 直接 `kubectl patch` 会被下一次 reconcile 覆盖；而 NginxProxy 的
+# spec.kubernetes.deployment.container.resources 会被 NGF 渲染进数据面，
+# **能持久生效**，从而避免网关与业务争内存（变更 #46 的故障根因之一）。
+#
+# 挂载方式：overlays/*/gateway.yaml 里 Gateway 的
+#   spec.infrastructure.parametersRef → {group: gateway.nginx.org, kind: NginxProxy, name: minipay-gateway-proxy}
+#
+# 说明：maxSurge/maxUnavailable 不在 NginxProxy 里（由 NGF 决定），
+# 因此数据面的滚动策略由 scripts/k3s/apply-ngf-tuning.sh 用 patch 固化，
+# 与"控制面资源/策略"一起执行。
+apiVersion: gateway.nginx.org/v1alpha2
+kind: NginxProxy
+metadata:
+  name: minipay-gateway-proxy
+  namespace: minipay
+spec:
+  kubernetes:
+    deployment:
+      replicas: 1
+      container:
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: "500m"
+            memory: 256Mi

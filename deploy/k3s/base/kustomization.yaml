@@ -5,6 +5,8 @@ namespace: minipay
 resources:
   - namespace.yaml
   - config/runtime-config.yaml
+  # NGF 数据面资源声明（变更 #48）：由 overlays/*/gateway.yaml 的 parametersRef 挂到 Gateway
+  - config/nginx-proxy.yaml
   - workloads/identity.yaml
   - workloads/wallet.yaml
   - workloads/payment.yaml
@@ -19,6 +21,8 @@ resources:
   - workloads/yshop-server.yaml
   - workloads/yshop-food-h5.yaml
   - workloads/yshop-admin-web.yaml
+  # 外卖维护页（变更 #47）：外卖栈下线时顶替 503
+  - workloads/maintenance-page.yaml
   - routes/public-api-routes.yaml
   - routes/minipay-web-routes.yaml
   - routes/yshop-routes.yaml
