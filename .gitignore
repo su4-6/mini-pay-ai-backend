@@ -37,3 +37,6 @@ integrations/yshop-lite/
 # 本地调试产物（playwright CLI 日志/快照），不属于源码。
 .playwright-cli/
 output/
+
+# Cloudflare Worker 本地状态（wrangler dev/deploy 产生），不属于源码。
+.wrangler/

@@ -87,6 +87,10 @@ $values = [ordered]@{
     MINIPAY_FOOD_H5_ORIGIN              = ($base -f "food")
     YSHOP_MINIPAY_H5_ORIGIN             = ($base -f "food")
     YSHOP_MINIPAY_ALLOW_GENERIC_ADDRESS = "true"
+    # AMap web (JS) key for the food H5 map. yshop-server references it through a
+    # configMapKeyRef, so it must exist locally as well or the pod fails with
+    # CreateContainerConfigError.
+    YSHOP_MINIPAY_AMAP_WEB_KEY          = "5998e7a69b3a589d2a9ee5126f289547"
 }
 
 $lines = @()

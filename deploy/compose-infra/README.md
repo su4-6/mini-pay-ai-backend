@@ -79,3 +79,46 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/k3s/infra.ps1 -Actio
 - 当前仍是本地 Docker Desktop Kubernetes；云端 K3s 配置、镜像、HTTPS、网页/App 仍待完成，见 [总蓝图](../../docs/k3s-deployment-blueprint.md) 和 [验收台账](../../docs/k3s-acceptance.md)。
 
 连不上宿主机时不要直接改 `0.0.0.0`。保留报错，检查宿主机地址解析、绑定接口和防火墙，再给出最小修复。
+
+---
+
+# 服务器（线上）中间件：`compose.server.yaml`
+
+线上是**单节点 K3s + 宿主机 Compose 中间件**：业务 Pod 通过节点内网地址访问中间件，
+因此在服务器上使用 [compose.server.yaml](./compose.server.yaml)，而不是本地那份 `compose.yaml`。
+
+```bash
+cd deploy/compose-infra
+cp .env.local.example .env.local      # 填真实密码；该文件不进 Git
+docker compose -f compose.server.yaml --env-file .env.local up -d
+docker compose -f compose.server.yaml ps
+```
+
+## 端口与库
+
+| 容器 | 镜像 | 宿主端口 | 用途 |
+| --- | --- | --- | --- |
+| `minipay-infra-minipay-mysql-1` | mysql:8.4 | 13306 | `minipay_identity` / `_payment` / `_wallet` / `_commerce` / `_agent` |
+| `minipay-infra-yshop-mysql-1` | mysql:8.4 | 13307 | `yixiang_drink`（YShop 独立库） |
+| `minipay-infra-minipay-redis-1` | redis:7.4-alpine | 16379 | 会话、验证码、幂等与限流 |
+| `minipay-infra-yshop-redis-1` | redis:7.4-alpine | 16380 | YShop 缓存与令牌 |
+| `minipay-infra-rabbitmq-1` | rabbitmq:4.1-management-alpine | 15673（AMQP）/ 15672（管理台） | 领域事件（Outbox → 队列） |
+| `minipay-infra-seata-server-1` | apache/seata-server:2.6.0 | 8091 | TCC 事务协调 |
+
+K3s 侧的对应配置在 `deploy/k3s/overlays/server/runtime.env`（`MYSQL_URL=jdbc:mysql://10.0.0.16:13306/...` 等），
+私密凭据在 `overlays/server/private/*.env`。**两边的账号密码必须一致**——`scripts/k3s/bootstrap-server.ps1 -InfraEnvFile <本目录 .env.local>`
+就是为了复用这里的真实凭据，避免手抄出错。
+
+## 为小规格服务器做的调优（相对本地 compose）
+
+| 项 | 调整 | 原因 |
+| --- | --- | --- |
+| MySQL | `--innodb-buffer-pool-size=64M`、`--performance-schema=OFF`、`--skip-name-resolve` | 4 GB 内存的机器上，默认 buffer pool 与 performance_schema 是纯浪费 |
+| Seata | `JVM_XMS=128m`、`JVM_XMX=256m` | 协调器只做事务登记，不需要大堆 |
+| 实测 | 中间件总内存 **1329 MiB → 630 MiB** | 给业务 Pod 与 etcd 让出空间 |
+
+## 与本地那套的关系
+
+- 本地开发继续用同目录的 `compose.yaml` + `scripts/k3s/infra.ps1`（含 Pod 连通性探针）。
+- 线上不要跑 `infra.ps1` 的探针逻辑，也不要把本地 `192.168.65.254`/`host.docker.internal` 带到服务器。
+- 中间件数据卷的备份/恢复属于独立操作，迁移前必须验证可恢复性；`init/` 下的初始化 SQL 只用于首次建库。

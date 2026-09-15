@@ -30,11 +30,12 @@ $env:PORT='8002'
 pnpm --filter @minipay/admin-web dev
 ```
 
-Docker/Nginx 模式（先启动后端，确保 `minipay_default` 网络存在）：
+Docker/Nginx 模式：
 
 ```powershell
-$env:ADMIN_WEB_HOST_PORT='8002'
-docker compose -f compose.server.yaml up -d --build admin-web
+# 早期用根目录 compose.server.yaml 在宿主机起 admin-web 容器的方式已随 K3s 迁移删除；
+# 现在前端以静态镜像跑在 K3s 里，本地调试直接用上面那行 pnpm dev，或：
+docker build -f ../mini-pay-ai-frontend/docker/k3s-web.Dockerfile --build-arg APP=admin-web -t suqihang/admin-web:local ../mini-pay-ai-frontend
 ```
 
 打开 `http://localhost:8002/`，页面会跳转到 Identity 的短信登录。首位超级管理员登录后，可在“后台账号”中创建其他管理员或运营账号。

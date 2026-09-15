@@ -37,6 +37,16 @@ param(
     [int]$RabbitmqPort = 5672,
     [string]$SeataServerAddr = "",
     [string]$ReuseCryptoFrom = "",
+    # Path to deploy/compose-infra/.env.local. Strongly recommended: the middleware
+    # containers initialize their credentials from that file ONCE, and Redis's
+    # requirepass / RabbitMQ's user password cannot be changed online afterwards.
+    # Without this the generated passwords never match the running middleware and
+    # every Java service dies with "Access denied for user 'minipay_*_app'".
+    [string]$InfraEnvFile = "",
+    # AMap web (JS) key used by the food H5 map. Client-visible by design, so it is
+    # not a server secret -- but the manifest references it via configMapKeyRef, and
+    # a missing key without `optional: true` fails the pod.
+    [string]$AmapWebKey = "5998e7a69b3a589d2a9ee5126f289547",
     [switch]$Force,
     [switch]$SkipVerify
 )
@@ -142,6 +152,7 @@ $runtime = [ordered]@{
     MINIPAY_FOOD_H5_ORIGIN              = "https://food.$Domain"
     YSHOP_MINIPAY_H5_ORIGIN             = "https://food.$Domain"
     YSHOP_MINIPAY_ALLOW_GENERIC_ADDRESS = "true"
+    YSHOP_MINIPAY_AMAP_WEB_KEY          = $AmapWebKey
 }
 Write-EnvFile (Join-Path $overlayDirectory "runtime.env") $runtime
 
@@ -170,6 +181,54 @@ $mysqlPassword = [ordered]@{
     payment  = New-HexSecret
     wallet   = New-HexSecret
     yshop    = New-HexSecret
+}
+
+# ---------------------------------------------------------------------------
+# IMPORTANT: the K3s side must ADOPT the credentials the middleware was already
+# initialised with -- not the other way round.
+#
+# The MySQL / Redis / RabbitMQ containers are created by
+# deploy/compose-infra/compose.yaml from its .env.local, and they write those
+# credentials exactly once at first initialisation. MySQL can still be recovered
+# afterwards with ALTER USER, but Redis's requirepass and RabbitMQ's user password
+# have no equivalent online change path. Generating fresh passwords here (which is
+# what this script used to do unconditionally) makes every Java service die with
+#   Access denied for user 'minipay_identity_app'@'172.19.0.1' (using password: YES)
+# and land in CrashLoopBackOff.
+# ---------------------------------------------------------------------------
+if (-not [string]::IsNullOrWhiteSpace($InfraEnvFile)) {
+    if (-not (Test-Path -LiteralPath $InfraEnvFile)) { throw "InfraEnvFile not found: $InfraEnvFile" }
+    Write-Host "    reusing middleware credentials from $InfraEnvFile"
+    $infra = @{}
+    foreach ($line in [IO.File]::ReadAllLines($InfraEnvFile)) {
+        $trimmed = $line.Trim()
+        if ($trimmed.Length -eq 0 -or $trimmed.StartsWith("#") -or -not $trimmed.Contains("=")) { continue }
+        $eq = $trimmed.IndexOf("=")
+        $key = $trimmed.Substring(0, $eq).Trim()
+        $value = $trimmed.Substring($eq + 1).Trim().Trim('"').Trim("'")
+        if ($value.Length -gt 0) { $infra[$key] = $value }
+    }
+    $need = {
+        param([string]$name)
+        if (-not $infra.ContainsKey($name)) {
+            throw "InfraEnvFile ($InfraEnvFile) is missing required key: $name"
+        }
+        return $infra[$name]
+    }
+    $rabbitUser = & $need "RABBITMQ_USERNAME"
+    $rabbitPassword = & $need "RABBITMQ_PASSWORD"
+    $redisPassword = & $need "MINIPAY_REDIS_PASSWORD"
+    $yshopRedisPassword = & $need "YSHOP_REDIS_PASSWORD"
+    $mysqlPassword.identity = & $need "IDENTITY_DB_PASSWORD"
+    $mysqlPassword.agent = & $need "AGENT_DB_PASSWORD"
+    $mysqlPassword.commerce = & $need "COMMERCE_DB_PASSWORD"
+    $mysqlPassword.payment = & $need "PAYMENT_DB_PASSWORD"
+    $mysqlPassword.wallet = & $need "WALLET_DB_PASSWORD"
+    $mysqlPassword.yshop = & $need "YSHOP_MYSQL_PASSWORD"
+} else {
+    Write-Warning "InfraEnvFile not supplied: DB/Redis/RabbitMQ passwords were randomly generated. " +
+        "If the middleware was already initialised from compose .env.local, every Java service " +
+        "will fail with 'Access denied'. Pass -InfraEnvFile <deploy/compose-infra/.env.local>."
 }
 
 # Crypto material. Either freshly generated (fresh database) or copied from an
@@ -290,6 +349,14 @@ Write-EnvFile (Join-Path $privateDirectory "yshop.env") ([ordered]@{
     SPRING_RABBITMQ_USERNAME                             = $rabbitUser
     SPRING_RABBITMQ_PASSWORD                             = $rabbitPassword
     YSHOP_MINIPAY_HMAC_SECRET                            = $yshopHmac
+    # WeChat is not configured for the demo environment. These four keys are still
+    # referenced by the Deployment via secretKeyRef; a missing key without
+    # `optional: true` leaves the pod stuck in CreateContainerConfigError, so they
+    # must exist even as placeholders.
+    WX_MINIAPP_APPID                                     = "wx_demo_miniapp_placeholder"
+    WX_MINIAPP_SECRET                                    = "demo_miniapp_secret_placeholder"
+    WX_MP_APP_ID                                         = "wx_demo_mp_placeholder"
+    WX_MP_SECRET                                         = "demo_mp_secret_placeholder"
 })
 
 Write-Host "==> Generating the JWT signing key pair (PKCS#8 + SPKI, RSA-2048)"
@@ -346,8 +413,19 @@ if (-not $SkipVerify) {
 
 Write-Host ""
 Write-Host "Server material is ready. Next:" -ForegroundColor Green
-Write-Host "  1. Create the databases and let Flyway migrate them."
-Write-Host "  2. kubectl create secret docker-registry dockerhub-pull --docker-server=docker.io --docker-username=<user> --docker-password=<token> -n minipay"
-Write-Host "  3. kubectl apply -k deploy/k3s/overlays/server"
+Write-Host "  1. Create the databases and let Flyway migrate them (see deploy/k3s README)."
+Write-Host "  2. Confirm the Gateway API CRDs and NGINX Gateway Fabric are installed."
+Write-Host "     Install CRDs with 'kubectl apply --server-side --force-conflicts': plain"
+Write-Host "     client-side apply aborts on nginxproxies with 'metadata.annotations: Too long'"
+Write-Host "     and silently leaves the upstream gateway.networking.k8s.io CRDs uncreated."
+Write-Host "     Note deploy/crds.yaml from NGF ships only the gateway.nginx.org CRDs; the"
+Write-Host "     upstream Gateway API CRDs must be installed separately."
+Write-Host "  3. Install the Cloudflare Origin CA certificate as Secret minipay-wildcard-tls"
+Write-Host "     (it is not stored in Git)."
+Write-Host "  4. kubectl apply -k deploy/k3s/overlays/server"
+Write-Host ""
+Write-Host "No imagePullSecret is needed: docker.io/suqihang/* is public. Do NOT create a"
+Write-Host "dockerhub-pull secret with wrong credentials -- kubelet would then send a bad"
+Write-Host "Authorization header and get 401 even for public images."
 Write-Host ""
 Write-Host "Reminder: deploy/k3s/overlays/server/private/ and runtime.env stay out of Git. Back them up somewhere safe."
