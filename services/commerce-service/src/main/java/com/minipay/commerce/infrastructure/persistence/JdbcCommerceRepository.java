@@ -807,10 +807,33 @@ public class JdbcCommerceRepository implements CommerceRepository {
                 rs.getLong("item_amount_cent"), rs.getLong("delivery_fee_cent"),
                 rs.getLong("discount_cent"), rs.getLong("payable_amount_cent"),
                 FoodOrderStatus.valueOf(rs.getString("status")),
-                PaymentStatus.valueOf(rs.getString("payment_status")),
+                paymentStatus(rs.getString("payment_status")),
                 RefundStatus.valueOf(rs.getString("refund_status")),
                 rs.getTimestamp("expires_at").toInstant(), rs.getLong("version"),
                 rs.getTimestamp("created_at").toInstant(), rs.getTimestamp("updated_at").toInstant());
+    }
+
+    /**
+     * 兼容历史数据里的支付状态词表。
+     *
+     * <p>旧版本/旧演示数据在 {@code food_order.payment_status} 里写过 {@code PAID} / {@code REFUNDED} /
+     * {@code PROCESSING}，而领域枚举只有 {@code UNPAID / SUCCEEDED / FAILED}：
+     * 直接 {@code PaymentStatus.valueOf} 会抛 {@code IllegalArgumentException}，
+     * 让 {@code SandboxFulfillmentScheduler} 每 5 秒崩一次、订单接口整表读不出来。
+     *
+     * <p>数据已由 {@code V9__normalize_legacy_food_order_payment_status.sql} 归一化；
+     * 这里再兜一层，未知值按 {@code UNPAID} 处理，避免一行脏数据拖垮整个查询。
+     */
+    private static PaymentStatus paymentStatus(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return PaymentStatus.UNPAID;
+        }
+        return switch (raw.toUpperCase(java.util.Locale.ROOT)) {
+            case "PAID", "REFUNDED", "PROCESSING" -> PaymentStatus.SUCCEEDED;
+            case "SUCCEEDED" -> PaymentStatus.SUCCEEDED;
+            case "FAILED" -> PaymentStatus.FAILED;
+            default -> PaymentStatus.UNPAID;
+        };
     }
 
     private void appendHistory(
