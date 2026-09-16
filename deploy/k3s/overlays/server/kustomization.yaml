@@ -221,6 +221,38 @@ patches:
           name: REAL_NAME_PROVIDER
           value: "sandbox"
   # ---------------------------------------------------------------------------
+  # 米灵（AI 助手）接模型（**变更 #55**）。
+  #
+  # agent-service 默认 MODEL_ENABLED=false / MODEL_CHAT_MODE=none → 走 UnavailableModelGateway，
+  # 对话 run 直接 FAILED（App 里表现为「AI 不回话」）。演示环境接的是智谱 GLM 的
+  # OpenAI 兼容接口（Spring AI 的 openai 模式：base-url + /chat/completions）。
+  #
+  # ⚠️ API Key 不进 Git：由 overlays/server/private/agent.env 注入 agent-runtime Secret
+  #    的 MODEL_API_KEY（kustomize secretGenerator）。换模型只改 MODEL_NAME；
+  #    换供应商改 MODEL_BASE_URL（任何 OpenAI 兼容服务都可以）。
+  - target: {kind: Deployment, name: agent-service}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: MODEL_ENABLED
+          value: "true"
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: MODEL_CHAT_MODE
+          value: openai
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: MODEL_BASE_URL
+          value: https://open.bigmodel.cn/api/paas/v4
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: MODEL_NAME
+          value: glm-4.5-air
+  # ---------------------------------------------------------------------------
   # 关掉 identity-service 的邮件健康指示器（**变更 #38**）。
   #
   # 现象：`GET /actuator/health` 返回 503，{status:DOWN}，而 liveness/readiness 都是 UP，
