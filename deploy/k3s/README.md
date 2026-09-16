@@ -171,6 +171,39 @@ for k in PAYMENT_TO_IDENTITY_CLIENT_SECRET PAYMENT_TO_WALLET_CLIENT_SECRET \
 done   # 具体比对脚本见 _codex_digest/accept/fix-client-secret-drift.sh
 
 # 修复：kubectl patch secret <消费方 secret> --type merge -p '{"data":{"<KEY>":"<identity 的 base64 值>"}}'
-#       然后 kubectl -n minipay rollout restart deploy <消费方>
+#       然后 kubectl -n rollout restart deploy <消费方>
 ```
+
+## 边缘与 CDN（两套并存，**变更 #60/#61**）
+
+| 流量 | 走哪 | 备注 |
+| --- | --- | --- |
+| 页面（`su46proj.site` / `www` / `pay`） | Cloudflare Worker | 边缘直出，实测 TTFB ~215 ms |
+| 控制台（`ops` / `merchant` / `admin`） | Cloudflare → K3s | 静态外壳由 Worker 做**边缘缓存**（`x-minipay-edge: HIT/MISS/BYPASS`，TTL 600 s，浏览器侧强制 `no-cache`） |
+| 控制台接口（BFF） | Cloudflare → K3s | 动态不缓存，国内 TTFB 1.2–1.6 s |
+| **APK 下载** | **腾讯云境内 CDN `dl.su46proj.site`** → 回源 R2 `download.su46proj.site` | 40 MB 下载 156 s → **3.4 s**；证书是腾讯免费 DV（90 天） |
+
+运维要点：
+
+```bash
+# ① 前端发新版后：刷新控制台外壳的边缘缓存（否则最多 10 分钟边缘仍供旧 HTML）
+curl -X POST "https://api.cloudflare.com/client/v4/zones/<zone>/purge_cache" \
+  -H "Authorization: Bearer <CF token>" -H 'Content-Type: application/json' \
+  --data '{"files":["https://ops.su46proj.site/ops/login","https://merchant.su46proj.site/merchant/login","https://admin.su46proj.site/"]}'
+
+# ② 发新版 APK 后：刷新腾讯云 CDN 缓存（文件名固定，不刷新会继续供旧包）
+node _codex_digest/accept/tencent-cdn.mjs purge https://dl.su46proj.site/downloads/minipay-latest.apk
+
+# ③ 腾讯云证书（dl.su46proj.site，90 天，2026-12-15 到期）续期：申请 → 加 TXT → 绑定
+node _codex_digest/accept/tencent-cdn.mjs ssl-apply dl.su46proj.site
+node _codex_digest/accept/tencent-cdn.mjs ssl-detail <CertId>     # 取 DvAuthKey/DvAuthValue，去 Cloudflare 加 TXT
+node _codex_digest/accept/tencent-cdn.mjs https-bind dl.su46proj.site <CertId>
+
+# ④ 其余 CDN/域名操作（列出/禁用/删除/证书查询）
+node _codex_digest/accept/tencent-cdn.mjs list | describe dl.su46proj.site
+```
+
+> 密钥：Cloudflare token 在 `C:\minipay-keys\cf-token.txt`，腾讯云密钥在 `C:\minipay-keys\tencent-cloud.txt`，均不进 Git。
+> 账号里还留着两个**已关闭的旧 CDN 域名**（`www.su46proj.site` / `su46proj.site`，境外节点、7 月创建），
+> 与 Worker 的页面路由冲突，建议删除。
 

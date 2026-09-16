@@ -46,6 +46,9 @@
 
 - Android、中文、文字输入；
 - DeepSeek OpenAI-compatible 云端接口，默认模型 `deepseek-v4-flash`；
+  > 说明（2026-09-16）：这里接的是**任意 OpenAI 兼容服务**，`MODEL_BASE_URL` / `MODEL_NAME` / `MODEL_API_KEY`
+  > 都由部署方覆盖。当前演示环境实际用**智谱 GLM**（`https://open.bigmodel.cn/api/paas/v4` + `glm-4.5-air`），
+  > 见 `_codex_digest/变更记录与回滚.md` 变更 #55；本文档表格里的 DeepSeek 只是代码默认值。
 - 站内联系人或完整手机号精确解析转账；
 - 钱包余额、账单列表、筛选和聚合分析；
 - 沙箱商家、菜单、地址、优惠、库存、外卖订单和模拟配送；

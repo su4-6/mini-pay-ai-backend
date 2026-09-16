@@ -114,7 +114,9 @@ docker run --rm -v "${PWD}:/workspace" -w /workspace maven:3.9.11-eclipse-temuri
 线上是单节点 K3s：中间件（MySQL ×2 / Redis ×2 / RabbitMQ / Seata）跑在宿主机 Compose，
 业务与前端跑在集群里，入口由 NGINX Gateway Fabric 按 HTTPRoute 分流，TLS 与静态缓存由 Cloudflare 承担。
 
-- 部署手册（清单分层、构建与推送镜像、网关与证书、外卖栈启停、日常运维与回滚）：[deploy/k3s/README.md](deploy/k3s/README.md)
+- **两套 CDN 并存**：页面与接口走 Cloudflare（控制台的静态外壳由 Worker 做边缘缓存）；
+  **APK 下载走腾讯云境内 CDN** `dl.su46proj.site`（源站仍是 R2 的 `download.su46proj.site`，国内实测 40 MB 从 156 s 降到 3.4 s）。
+- 部署手册（清单分层、构建与推送镜像、网关与证书、外卖栈启停、CDN/证书运维、日常运维与回滚）：[deploy/k3s/README.md](deploy/k3s/README.md)
 - 中间件编排：[deploy/compose-infra/README.md](deploy/compose-infra/README.md)
 - 环境变量名契约：[`.env.example`](.env.example)（本地）· [`.env.production.example`](.env.production.example)（线上）
 
@@ -127,7 +129,8 @@ docker run --rm -v "${PWD}:/workspace" -w /workspace maven:3.9.11-eclipse-temuri
 | 图片存储（店铺图/头像） | `OBJECT_STORAGE_PROVIDER=aliyun` + `ALIYUN_OSS_*` + AK/SK |
 | 短信验证码 | `SMS_PROVIDER` + 阿里云短信凭证 |
 | 邮件验证码 | `EMAIL_PROVIDER=smtp` + SMTP 凭证；未配置时需把 `MANAGEMENT_HEALTH_MAIL_ENABLED` 设为 `false`，否则健康检查会因邮件指示器失败 |
-| 实名与内容安全 | `REAL_NAME_PROVIDER` / `CONTENT_SAFETY_PROVIDER` |
+| 实名与内容安全 | `REAL_NAME_PROVIDER`（演示环境用 `sandbox`：证件尾号非 0 即通过，且不校验身份证格式）/ `CONTENT_SAFETY_PROVIDER` |
+| AI 助手「米灵」 | `MODEL_ENABLED=true` + `MODEL_CHAT_MODE=openai` + `MODEL_BASE_URL` + `MODEL_NAME` + `MODEL_API_KEY`（任意 OpenAI 兼容服务；演示环境接的是智谱 GLM `glm-4.5-air`） |
 | 高德地图 | Web JS Key + jscode（前端构建期）、Android Key（App 构建期）、`YSHOP_MINIPAY_AMAP_WEB_KEY`（外卖 H5） |
 
 ## 文档
