@@ -29,6 +29,13 @@ const AUTHOR_EMAIL = 'su_qihang@163.com';
 const AUTHOR_MAILTO = 'mailto:su_qihang@163.com';
 const SITE_URL = 'https://su46proj.site/';
 const APK_URL = 'https://download.su46proj.site/downloads/minipay-latest.apk';
+// 发新版 APK 时改这几行（其余文案自动跟着变）。
+const APK_VERSION = '0.1.6';
+const APK_VERSION_CODE = 7;
+const APK_SIZE = '38.4 MB';
+const APK_SHA256 = 'FFE0E7716BAB66D5AD27CFD3B0F02BB4CCADE1ECB2661EA39BFEA0FE4CE587A7';
+const APK_UPDATED = '2026-09-16';
+const APK_HIGHLIGHTS = '本版修复实名认证与首页定位（高德 SDK 隐私合规声明、天气获取失败降级）';
 const PROJECT_URL = 'https://pay.su46proj.site/';
 
 /* ------------------------------------------------------------------ */
@@ -214,6 +221,7 @@ section{padding:var(--sec) 0}
 .hero h1{margin-top:clamp(20px,2.8vw,28px);max-width:22ch}
 .hero .lede{margin-top:clamp(18px,2.4vw,26px)}
 .hero .acts{display:flex;flex-wrap:wrap;gap:12px;margin-top:clamp(26px,3.4vw,36px)}
+.hero .apk-note{margin-top:16px;color:var(--muted);font-size:.86rem;line-height:1.7;max-width:78ch}
 
 /* buttons -- solid primary + outlined secondary */
 .btn{
@@ -467,6 +475,11 @@ function icpLink() {
   return '<a class="icp" href="' + ICP_URL + '" target="_blank" rel="noopener">' + ICP_NUMBER + '</a>';
 }
 
+/** APK 版本一行：`0.1.6（versionCode 7） · 38.4 MB · 更新于 2026-09-16`。 */
+function apkMeta() {
+  return `${APK_VERSION}（versionCode ${APK_VERSION_CODE}） · ${APK_SIZE} · 更新于 ${APK_UPDATED}`;
+}
+
 /** 公安联网备案：图标在左、编号在右，整体可点击跳转到备案查询页。 */
 function policeLink() {
   return (
@@ -640,8 +653,10 @@ ${HEAD_META}
     <p class="lede">独立开发者，后端与全栈。一个人写服务、搭集群、做界面，目前主要在做 MiniPay AI：把支付、钱包和外卖业务放在同一套微服务里的演示平台。我关心的不是功能列表有多长，而是钱有没有算对、账能不能对上、服务挂掉之后能不能自己恢复。</p>
     <div class="acts">
       <a class="btn solid" href="${PROJECT_URL}">查看项目<span class="arrow" aria-hidden="true">→</span></a>
+      <a class="btn" href="${APK_URL}" target="_blank" rel="noopener">下载 Android App</a>
       <a class="btn" href="${AUTHOR_MAILTO}">联系我</a>
     </div>
+    <p class="apk-note">Android App ${apkMeta()}　·　${APK_HIGHLIGHTS}</p>
     <div class="facts">
 ${renderFacts()}
     </div>
@@ -913,6 +928,7 @@ ${HEAD_META}
       <a class="btn" href="https://ops.su46proj.site/" target="_blank" rel="noopener">进入运营端</a>
       <a class="btn" href="${APK_URL}" target="_blank" rel="noopener">下载 Android App</a>
     </div>
+    <p class="apk-note">Android App ${apkMeta()}　·　${APK_HIGHLIGHTS}</p>
     <div class="toptags">
       <span class="chip">OAuth2 + PKCE</span>
       <span class="chip">复式账本</span>
@@ -978,6 +994,9 @@ ${renderSteps()}
       <div class="t">
         <h3>Android App 下载</h3>
         <p>用户在手机上的完整体验：钱包余额、支付、账单明细、外卖下单入口，用短信验证码登录。安装包直接取自对象存储，不带任何跳转页。</p>
+        <p class="f">${apkMeta()}</p>
+        <p class="f">${APK_HIGHLIGHTS}</p>
+        <p class="f">SHA-256 ${APK_SHA256}</p>
         <p class="f">${APK_URL}</p>
       </div>
       <a class="btn solid" href="${APK_URL}" target="_blank" rel="noopener">下载 APK</a>
