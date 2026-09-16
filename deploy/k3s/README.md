@@ -130,3 +130,47 @@ node _codex_digest/accept/cdp-portal-sweep.mjs upload merchant
 - 滚动更新策略：业务 Deployment 用 `maxSurge=0/maxUnavailable=1`（先停后起，避免内存峰值翻倍）；
   NGF 数据面保持 NGF 默认（单副本下等价于先起新后停旧），**不要**给数据面设 `maxSurge=0`——
   控制面不可用时会把唯一就绪的网关 Pod 缩掉，导致全站 521。
+
+## 两个已踩过的基础设施坑（换机器/重建中间件时必查）
+
+### 1) Seata 的表不会自动补（TCC 转账直接 503）
+
+`docker/mysql/core/init/002-seata-schema.sql` 只在 MySQL **首次初始化**时执行
+（docker-entrypoint-initdb.d）。若数据卷早于该挂载存在，`seata` 库里就没有
+`global_table / branch_table / lock_table / distributed_lock / vgroup_table`，表现为：
+
+- 转账确认接口返回 `503 DISTRIBUTED_TRANSACTION_UNAVAILABLE`
+- payment-service 日志：`TransactionException[begin global request failed. msg=Table 'seata.global_table' doesn't exist]`
+
+补齐（用 seata 自己的库用户，从 compose 网络里的临时容器连，避开 `'seata'@'localhost'` 授权问题）：
+
+```bash
+docker run --rm -i --network minipay-infra mysql:8.4 \
+  mysql -h minipay-mysql -useata -p"$(docker exec minipay-infra-seata-server-1 printenv SEATA_DB_PASSWORD)" \
+  --default-character-set=utf8mb4 seata < docker/mysql/core/init/002-seata-schema.sql
+```
+
+### 2) 内部 OAuth 客户端密钥会漂移（外卖授权/Agent 工具调用报“资料暂不可用”）
+
+identity 启动时会用**自己那份** secret 重新注册所有内部客户端，所以 identity 侧是权威值。
+如果某个消费方（wallet / agent / commerce）secret 里的同名 key 与之不同（或干脆缺失），
+客户端拿到的是 `invalid_client`，业务侧表现为：
+
+- `COMMERCE_IDENTITY_UNAVAILABLE`「用户授权资料暂不可用」（外卖授权、外卖入口 SYNC_FAILED）
+- agent 侧工具调用/委派授权失败
+
+巡检与修复（把 identity 的值同步到消费方并滚动重启）：
+
+```bash
+# 巡检：逐个内部客户端比较两侧 sha256 前缀
+for k in PAYMENT_TO_IDENTITY_CLIENT_SECRET PAYMENT_TO_WALLET_CLIENT_SECRET \
+         WALLET_TO_IDENTITY_CLIENT_SECRET AGENT_TO_PAYMENT_CLIENT_SECRET \
+         AGENT_TO_IDENTITY_CLIENT_SECRET AGENT_DELEGATION_CLIENT_SECRET \
+         IDENTITY_TO_PAYMENT_CLIENT_SECRET COMMERCE_TO_IDENTITY_CLIENT_SECRET; do
+  echo "$k"
+done   # 具体比对脚本见 _codex_digest/accept/fix-client-secret-drift.sh
+
+# 修复：kubectl patch secret <消费方 secret> --type merge -p '{"data":{"<KEY>":"<identity 的 base64 值>"}}'
+#       然后 kubectl -n minipay rollout restart deploy <消费方>
+```
+
