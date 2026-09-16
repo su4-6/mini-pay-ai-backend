@@ -203,6 +203,24 @@ patches:
         path: /spec/template/spec/containers/0/imagePullPolicy
         value: IfNotPresent
   # ---------------------------------------------------------------------------
+  # 演示环境开启实名认证沙箱通道（**变更 #53**）。
+  #
+  # base/config/runtime-config.yaml 里 REAL_NAME_PROVIDER=disabled，于是
+  # POST /api/v1/real-name-verifications 直接 503 REAL_NAME_PROVIDER_UNAVAILABLE，
+  # App 的实名认证整条流程走不下去（用户实测反馈）。
+  # 演示环境没有阿里云实名认证凭证，用 sandbox：证件尾号非 0 即通过，
+  # 与「固定短信验证码 123456」的演示策略一致。
+  #
+  # ⚠️ 正式环境：改回 disabled，或配置 aliyun + minipay.identity.real-name.*
+  #    的 AK/SK（见 services/identity-service/.../AliyunRealNameVerification.java）。
+  - target: {kind: Deployment, name: identity-service}
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/env/-
+        value:
+          name: REAL_NAME_PROVIDER
+          value: "sandbox"
+  # ---------------------------------------------------------------------------
   # 关掉 identity-service 的邮件健康指示器（**变更 #38**）。
   #
   # 现象：`GET /actuator/health` 返回 503，{status:DOWN}，而 liveness/readiness 都是 UP，
