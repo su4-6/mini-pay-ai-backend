@@ -5,15 +5,21 @@ compatibility_date = "2026-09-01"
 # Static, self-contained HTML pages. No external assets.
 workers_dev = false
 
-# 只接管这三个主机名。其余子域（ops/merchant/admin/food/food-admin/identity/
+# 只接管这些主机名。其余子域（food/food-admin/identity/
 # payment/wallet/commerce/agent）必须继续由 K3s 提供，Worker 内部对它们一律
 # `return fetch(request)` 直通回源，绝不拦截。
 # download.su46proj.site 不在这里 —— 它走 R2 自定义域名直连 bucket，
 # 大文件不经过 Worker，更省事也更快（Worker 里的 R2 分支只是兜底）。
+#
+# ops/merchant/admin 在路由里是为了给「静态 HTML 外壳」做边缘缓存（**变更 #61**）：
+# 只缓存 200 + text/html + 无 Set-Cookie 的响应，登录/接口路径一律回源。
 routes = [
   { pattern = "su46proj.site/*",     zone_name = "su46proj.site" },
   { pattern = "www.su46proj.site/*", zone_name = "su46proj.site" },
-  { pattern = "pay.su46proj.site/*", zone_name = "su46proj.site" }
+  { pattern = "pay.su46proj.site/*", zone_name = "su46proj.site" },
+  { pattern = "ops.su46proj.site/*", zone_name = "su46proj.site" },
+  { pattern = "merchant.su46proj.site/*", zone_name = "su46proj.site" },
+  { pattern = "admin.su46proj.site/*", zone_name = "su46proj.site" }
 ]
 
 # Android APK downloads served from R2 (download.su46proj.site).

@@ -88,8 +88,33 @@ npx wrangler deploy
 部署前确认：
 
 1. 已在 Cloudflare 中创建 R2 桶 `minipay-downloads` 并上传 `downloads/minipay-latest.apk`。
-2. `su46proj.site`、`www.su46proj.site`、`pay.su46proj.site`、`download.su46proj.site` 四个域名已绑定到该 Worker；其余子域保持解析到 K3s 源站，不要绑定到本 Worker。
+2. `su46proj.site`、`www.su46proj.site`、`pay.su46proj.site`、`download.su46proj.site` 四个域名已绑定到该 Worker；
+   `ops / merchant / admin` 三个子域也绑定了路由，但**只用来做静态外壳的边缘缓存**（见下节），其余子域保持解析到 K3s 源站，不要绑定到本 Worker。
 3. 源站证书使用 Cloudflare Origin CA，回源流量仍需经过集群入口 NGINX Gateway Fabric。
+
+## 控制台静态外壳的边缘缓存（变更 #61）
+
+`ops / merchant / admin` 三端的 SPA 外壳（index.html）与用户无关，却因为源站 `Cache-Control: no-cache`
+每次都要从 Cloudflare 边缘回源上海，国内实测冷启动 TTFB 2.9–3.8 s。Worker 里用 Cache API 把它缓存在边缘：
+
+| 规则 | 值 |
+| --- | --- |
+| 命中主机 | `ops.su46proj.site` · `merchant.su46proj.site` · `admin.su46proj.site` |
+| 缓存对象 | 仅 `GET/HEAD` + `200` + `text/html` + **无 `Set-Cookie`** |
+| 不缓存路径 | `/api/` `/oauth2/` `/login` `/logout` `/session` `/identity/` `/actuator/` `/internal/` `/.well-known/` `/openapi/` `/merchant/oauth2` `/callback` |
+| 边缘 TTL | 600 s（`s-maxage`），过期自动回源 |
+| 浏览器 | `no-cache, must-revalidate`（**故意不让浏览器缓存**：外壳过期会指向被替换的 hash 资源而白屏） |
+| 调试头 | 响应带 `x-minipay-edge: HIT / MISS / BYPASS` |
+
+**发新版前端后必须刷新外壳缓存**（否则最多 10 分钟内地边缘仍供旧 HTML）：
+
+```bash
+curl -X POST "https://api.cloudflare.com/client/v4/zones/<zone>/purge_cache" \
+  -H "Authorization: Bearer <CF token>" -H 'Content-Type: application/json' \
+  --data '{"files":["https://ops.su46proj.site/ops/login","https://merchant.su46proj.site/merchant/login","https://admin.su46proj.site/"]}'
+```
+
+已实测：purge 后下一次请求回到 `MISS`，再下一次 `HIT`。
 
 ## 页面约束
 
