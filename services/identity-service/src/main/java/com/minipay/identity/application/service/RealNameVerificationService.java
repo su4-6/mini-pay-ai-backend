@@ -73,13 +73,24 @@ public class RealNameVerificationService {
         if (name.length() < 2 || name.length() > 64) {
             throw new RealNameVerificationRejectedException("LEGAL_NAME_INVALID");
         }
-        if (!number.matches("^[1-9]\\d{16}[0-9X]$") || !validIdChecksum(number)) {
+        if (lenientIdNumber()) {
+            // 演示（sandbox）通道：按用户要求先关掉身份证号正则与校验位校验，只约束长度，
+            // 便于用任意测试号走通 App 的实名流程。正式 Provider 仍然走下面的严格校验。
+            if (number.length() < 6 || number.length() > 32) {
+                throw new RealNameVerificationRejectedException("ID_NUMBER_INVALID");
+            }
+        } else if (!number.matches("^[1-9]\\d{16}[0-9X]$") || !validIdChecksum(number)) {
             throw new RealNameVerificationRejectedException("ID_NUMBER_INVALID");
         }
         if (jpeg == null || jpeg.length < 4 || jpeg.length > 1_048_576
                 || (jpeg[0] & 0xff) != 0xff || (jpeg[1] & 0xff) != 0xd8) {
             throw new RealNameVerificationRejectedException("FACE_IMAGE_INVALID");
         }
+    }
+
+    /** sandbox 通道放宽身份证校验；正式 Provider（aliyun/disabled 之外的实名通道）保持严格校验。 */
+    private boolean lenientIdNumber() {
+        return "sandbox".equalsIgnoreCase(providerName);
     }
 
     private boolean validIdChecksum(String value) {
@@ -119,6 +130,13 @@ public class RealNameVerificationService {
     }
 
     private String maskId(String id) {
+        // 放宽校验后可能收到较短的测试号，这里保证任何长度都能安全脱敏。
+        if (id.length() <= 4) {
+            return "*".repeat(id.length());
+        }
+        if (id.length() < 11) {
+            return id.substring(0, 2) + "*".repeat(id.length() - 3) + id.substring(id.length() - 1);
+        }
         return id.substring(0, 3) + "***********" + id.substring(id.length() - 4);
     }
 
