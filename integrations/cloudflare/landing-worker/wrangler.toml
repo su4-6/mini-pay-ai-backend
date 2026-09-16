@@ -22,3 +22,12 @@ routes = [
 [[r2_buckets]]
 binding = "DOWNLOADS"
 bucket_name = "minipay-downloads"
+
+# 可观测性（**变更 #59**）：打开 Workers Logs，事故时能在控制台看到每次调用的
+# 状态码、异常与 console.log。站点量级很小（约 1k 请求/天），免费额度足够；
+# Traces 只用于性能剖析，保持关闭。要关掉的话把 enabled 改回 false 再 deploy。
+[observability]
+enabled = true
+
+[observability.logs]
+invocation_logs = true
