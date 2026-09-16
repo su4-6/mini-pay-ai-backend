@@ -28,7 +28,10 @@ const POLICE_URL = 'https://beian.mps.gov.cn/#/query/webSearch?code=410105020080
 const AUTHOR_EMAIL = 'su_qihang@163.com';
 const AUTHOR_MAILTO = 'mailto:su_qihang@163.com';
 const SITE_URL = 'https://su46proj.site/';
-const APK_URL = 'https://download.su46proj.site/downloads/minipay-latest.apk';
+// APK 下载走腾讯云 CDN（境内加速，**变更 #60**）：40 MB 实测 156s → 3.4s。
+// 源站是 R2 的 download.su46proj.site；CDN 挂了或要回退时改回下面那行的 R2 直连地址即可。
+const APK_URL = 'https://dl.su46proj.site/downloads/minipay-latest.apk';
+const APK_URL_FALLBACK = 'https://download.su46proj.site/downloads/minipay-latest.apk';
 const PROJECT_URL = 'https://pay.su46proj.site/';
 
 /* ------------------------------------------------------------------ */
@@ -977,7 +980,7 @@ ${renderSteps()}
     <div class="band2">
       <div class="t">
         <h3>Android App 下载</h3>
-        <p>用户在手机上的完整体验：钱包余额、支付、账单明细、外卖下单入口，用短信验证码登录。安装包直接取自对象存储，不带任何跳转页。</p>
+        <p>用户在手机上的完整体验：钱包余额、支付、账单明细、外卖下单入口，用短信验证码登录。安装包由国内 CDN 加速分发（源站为对象存储），点开即下，不带跳转页。</p>
         <p class="f">${APK_URL}</p>
       </div>
       <a class="btn solid" href="${APK_URL}" target="_blank" rel="noopener">下载 APK</a>
