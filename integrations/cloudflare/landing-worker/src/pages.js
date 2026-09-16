@@ -5,13 +5,16 @@
  *   projectLandingPage() -> pay.su46proj.site                  (MiniPay AI product page)
  *
  * Both are complete, standalone HTML5 documents with zero network requests:
- * no <script>, no external <link>, no @import, no web fonts, no analytics,
- * no images. The only outbound references are the portfolio <a href> URLs.
+ * no <script>, no external <link>, no @import, no web fonts, no analytics.
+ * The only image is the 公安备案图标, inlined as a data URI (see ./beian.js);
+ * the only outbound references are the portfolio <a href> URLs.
  *
  * Design: warm off-white paper, charcoal ink, hairline rules, a single
  * terracotta accent. Depth comes from 1px borders, flat surface tints and
  * very soft shadows -- never gradients, glow or blur.
  */
+
+import { POLICE_BADGE_DATA_URI } from './beian.js';
 
 /* ------------------------------------------------------------------ */
 /* constants                                                           */
@@ -19,6 +22,9 @@
 
 const ICP_NUMBER = '豫ICP备2026043015号';
 const ICP_URL = 'https://beian.miit.gov.cn/';
+// 公安联网备案：编号 + 图标必须同时展示，并链接到全国互联网安全管理服务平台。
+const POLICE_NUMBER = '豫公网安备41010502008025号';
+const POLICE_URL = 'https://beian.mps.gov.cn/#/query/webSearch?code=41010502008025';
 const AUTHOR_EMAIL = 'su_qihang@163.com';
 const AUTHOR_MAILTO = 'mailto:su_qihang@163.com';
 const SITE_URL = 'https://su46proj.site/';
@@ -402,6 +408,9 @@ td.sys{color:var(--ink);font-weight:600;white-space:nowrap}
 .site-foot .bottom .right{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:center}
 .site-foot .icp{color:var(--text);font-family:var(--mono);font-size:.82rem;border-bottom:1px solid var(--rule-2);padding-bottom:2px}
 .site-foot .icp:hover{color:var(--accent);border-bottom-color:var(--accent)}
+.site-foot .police{display:inline-flex;align-items:center;gap:6px;color:var(--text);font-family:var(--mono);font-size:.82rem;border-bottom:1px solid var(--rule-2);padding-bottom:2px}
+.site-foot .police:hover{color:var(--accent);border-bottom-color:var(--accent)}
+.site-foot .police img{display:block;flex:0 0 auto;height:18px;width:auto}
 .disclaimer{max-width:var(--wide);color:var(--muted);font-size:.86rem;line-height:1.8;margin:18px auto 0;padding:0 var(--gut)}
 .sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 
@@ -456,6 +465,16 @@ const HEAD_META = `<meta charset="utf-8">
 
 function icpLink() {
   return '<a class="icp" href="' + ICP_URL + '" target="_blank" rel="noopener">' + ICP_NUMBER + '</a>';
+}
+
+/** 公安联网备案：图标在左、编号在右，整体可点击跳转到备案查询页。 */
+function policeLink() {
+  return (
+    '<a class="police" href="' + POLICE_URL + '" target="_blank" rel="noopener">' +
+    '<img src="' + POLICE_BADGE_DATA_URI + '" alt="" width="16" height="18" decoding="async">' +
+    POLICE_NUMBER +
+    '</a>'
+  );
 }
 
 /**
@@ -551,6 +570,7 @@ function siteFooter(bio, links, note) {
     <span class="right">
       <a href="${AUTHOR_MAILTO}">${AUTHOR_EMAIL}</a>
       ${icpLink()}
+      ${policeLink()}
     </span>
   </div>
 </footer>`;

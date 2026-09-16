@@ -8,9 +8,11 @@
 
 ```
 landing-worker/
-├── src/index.js      # Worker 入口与路由逻辑
-├── src/pages.js      # personalHomePage() / projectLandingPage()，返回完整 HTML 文档
-├── wrangler.toml     # name / main / compatibility_date / R2 绑定
+├── src/index.js           # Worker 入口与路由逻辑
+├── src/pages.js           # personalHomePage() / projectLandingPage()，返回完整 HTML 文档
+├── src/beian.js           # 公安备案图标的 data URI（由 police-badge.png 生成）
+├── src/police-badge.png   # 公安备案图标原图（36×40，与 deploy/k3s/maintenance/beian.png 同源）
+├── wrangler.toml          # name / main / compatibility_date / R2 绑定
 └── README.md
 ```
 
@@ -22,7 +24,12 @@ landing-worker/
 | 产品落地页 | MiniPay AI 定位、核心能力、架构一览、演示账号、使用说明、项目跳转 |
 | APK 下载 | `download.su46proj.site` 从 R2 流式下载 Android 安装包 |
 
-两个页面均包含 ICP 备案页脚（`豫ICP备2026043015号`，链接到 https://beian.miit.gov.cn/ ）以及演示环境声明。
+两个页面均包含完整备案页脚：ICP 备案（`豫ICP备2026043015号` → https://beian.miit.gov.cn/ ）与
+公安联网备案（图标 + `豫公网安备41010502008025号` → https://beian.mps.gov.cn/#/query/webSearch?code=41010502008025 ），
+以及演示环境声明。图标按「图标在左、编号在右」排版，整块可点击。
+
+> 图标用 data URI 内联，页面仍然**零外部请求**（`wrangler.toml` 里也写明不依赖外部资源）。
+> 换图标：替换 `src/police-badge.png` 后重新生成 `src/beian.js` 的 data URI，再 `wrangler deploy`。
 
 ## 路由表
 

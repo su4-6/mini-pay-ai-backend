@@ -85,7 +85,15 @@ kubectl -n minipay scale deploy yshop-server yshop-food-h5 yshop-admin-web --rep
 #   yshop-food-h5 / yshop-admin-web，然后重新 apply
 ```
 
-维护页镜像：`docker build -f deploy/k3s/maintenance/Dockerfile -t suqihang/maintenance-page:0.1.0 deploy/k3s/maintenance`
+维护页镜像（内容为 `maintenance/index.html` + 页脚用的 `maintenance/beian.png`，公安备案图标）：
+
+```bash
+docker build -f deploy/k3s/maintenance/Dockerfile -t suqihang/maintenance-page:0.1.1 deploy/k3s/maintenance
+# 节点上直接构建 + 导入（Docker Hub 域名被劫持时用这条，改动 index.html 后无需外部网络）
+docker save suqihang/maintenance-page:0.1.1 | sudo k3s ctr -n k8s.io images import -
+kubectl -n minipay set image deploy/maintenance-page web=suqihang/maintenance-page:0.1.1
+kubectl -n minipay rollout status deploy/maintenance-page
+```
 
 ## 演示数据与账号
 
