@@ -200,84 +200,21 @@ patches:
           name: MINIPAY_IDENTITY_PUBLIC_URL
           value: https://admin.su46proj.site/identity
   # ---------------------------------------------------------------------------
-  # 三个 Web 前端暂时按 tag 引用（**变更 #44/#45**）。
+  # 镜像引用已回到 **digest 锁定**（**2026-09-27 收尾**）。
   #
-  # 本机 DNS（校园网 210.43.1.8/18）对 registry-1.docker.io 返回 NXDOMAIN，
-  # `docker push` 报 `dial tcp: lookup registry-1.docker.io: no such host`，
-  # 新镜像推不上 Docker Hub；而集群节点的镜像源（docker.m.daocloud.io）
-  # 也拿不到这些 digest → 用 digest 引用会 ImagePullBackOff。
+  # 背景：变更 #44/#45 起，三个控制台前端 + 消费者 H5 + 米灵 + consumer-bff/identity
+  # 一直用「tag + IfNotPresent」顶着，原因就是新镜像推不上 Docker Hub，
+  # 节点镜像源拿不到这些 digest → 用 digest 引用会 ImagePullBackOff。
   #
-  # 处理：镜像已用 `docker save` + `k3s ctr -n k8s.io images import` 放进节点本地存储，
-  # 这里用 tag 覆盖 digest 引用 + IfNotPresent，节点直接命中本地镜像。
-  # Docker Hub 能推之后，推一次再删掉本 patch，即回到 digest 锁定
-  # （digests 组件里已经写好对应的新 digest）。
-  - target: {kind: Deployment, name: admin-web}
-    patch: |-
-      - op: replace
-        path: /spec/template/spec/containers/0/image
-        value: suqihang/admin-web:0.1.0-k3s.9
-      - op: replace
-        path: /spec/template/spec/containers/0/imagePullPolicy
-        value: IfNotPresent
-  - target: {kind: Deployment, name: ops-web}
-    patch: |-
-      - op: replace
-        path: /spec/template/spec/containers/0/image
-        value: suqihang/ops-web:0.1.0-k3s.9
-      - op: replace
-        path: /spec/template/spec/containers/0/imagePullPolicy
-        value: IfNotPresent
-  - target: {kind: Deployment, name: merchant-web}
-    patch: |-
-      - op: replace
-        path: /spec/template/spec/containers/0/image
-        value: suqihang/merchant-web:0.1.0-k3s.9
-      - op: replace
-        path: /spec/template/spec/containers/0/imagePullPolicy
-        value: IfNotPresent
-  # 消费者 H5 与米灵同样是「节点本地导入镜像 + tag 引用」：新镜像还没有 digest，
-  # 推上去之后补进 overlays/server/private/digests 再删掉这两条 patch。
-  - target: {kind: Deployment, name: consumer-web}
-    patch: |-
-      - op: replace
-        path: /spec/template/spec/containers/0/image
-        value: suqihang/consumer-web:0.1.0-k3s.3
-      - op: replace
-        path: /spec/template/spec/containers/0/imagePullPolicy
-        value: IfNotPresent
-  - target: {kind: Deployment, name: miling-service}
-    patch: |-
-      - op: replace
-        path: /spec/template/spec/containers/0/image
-        value: suqihang/miling-service:0.1.0-k3s.3
-      - op: replace
-        path: /spec/template/spec/containers/0/imagePullPolicy
-        value: IfNotPresent
+  # 现在四颗新镜像都已发布到 Docker Hub（digest 见 deploy/k3s/README.md 的表格、
+  # generated/image-digests.json 与 private/digests 组件），并且**实测 kubelet 能
+  # 通过节点配置的国内镜像源按 digest 拉取**：一次性 pod 引用
+  # `suqihang/consumer-web@sha256:850509e3…` 在 1.078s 内拉完 21 MB ✓。
+  # 所以这里删掉全部 tag/IfNotPresent patch，统一由 private/digests 组件锁定。
+  #
+  # 回退办法：把对应 patch 加回来即可（只改 tag 两行），节点本地已有 tag 镜像，
+  # `IfNotPresent` 不会再拉取。
   # ---------------------------------------------------------------------------
-  # consumer-bff / identity-service 也改成 tag + IfNotPresent（**2026-09-27 H5 上线实测**）。
-  #
-  # 原因同上：新镜像只在节点本地 containerd（`docker save | k3s ctr images import`），
-  # private/digests 里锁的还是旧 digest。⚠️ 另外踩过一个坑：`docker build` 默认带
-  # attestation manifest（manifest list），导入后 kubelet 报 "image can't be pulled"，
-  # 必须用 `docker build --provenance=false --sbom=false` 出单平台镜像。
-  #
-  # Docker Hub 能推之后：推一次、用 push-and-record-digests.ps1 记 digest、删掉这两条 patch。
-  - target: {kind: Deployment, name: consumer-bff}
-    patch: |-
-      - op: replace
-        path: /spec/template/spec/containers/0/image
-        value: suqihang/consumer-bff:0.1.0-k3s.13
-      - op: replace
-        path: /spec/template/spec/containers/0/imagePullPolicy
-        value: IfNotPresent
-  - target: {kind: Deployment, name: identity-service}
-    patch: |-
-      - op: replace
-        path: /spec/template/spec/containers/0/image
-        value: suqihang/identity-service:0.1.0-k3s.12
-      - op: replace
-        path: /spec/template/spec/containers/0/imagePullPolicy
-        value: IfNotPresent
   # ---------------------------------------------------------------------------
   # 演示环境开启实名认证沙箱通道（**变更 #53**）。
   #

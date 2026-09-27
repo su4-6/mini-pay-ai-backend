@@ -78,7 +78,22 @@ docker push suqihang/<svc>:<tag>
 | `suqihang/identity-service:0.1.0-k3s.12` | ✅ | `sha256:5cf478728c23cf848d08cdddb240f4f574cc2c2f9dd72a023d27d6fd19036139` |
 | `suqihang/miling-service:0.1.0-k3s.3` | ✅ | `sha256:c02f73c7766bd07db64a9d441163442b78c5e82c5004ae6fab9d23ed2c6700ef` |
 
-四颗都已发布，因此**现在具备切回 digest 锁定的条件**（见本文件前面的 pin 流程）；线上暂时仍按 tag + `IfNotPresent` 引用，避免为纯记录变更做一次无谓滚动。
+四颗都已发布，**线上已于同日切回 digest 锁定**（见下节「digest 锁定恢复」）；`overlays/server` 里
+原先那 7 条 tag + `IfNotPresent` patch 已全部删除。
+
+### digest 锁定恢复（2026-09-27 完成）
+
+1. `generated/image-digests.json` 与 `overlays/server/private/digests/kustomization.yaml` 写入四颗新镜像的
+   registry 权威 digest（后者新增 `consumer-web` 与 `miling-service` 两条）。
+2. 删掉 `overlays/server/kustomization.yaml` 里 admin-web / ops-web / merchant-web / consumer-web /
+   miling-service / consumer-bff / identity-service 共 7 条 tag patch。
+3. 上线前先验证「节点能不能按 digest 拉取」。`ctr images pull` **不走** k3s 的镜像源（直连 docker.io，超时），
+   所以用一次性 pod 验证 kubelet：`suqihang/consumer-web@sha256:850509e3…` **1.078s 拉完 21 MB** ✓
+   —— 说明国内镜像源（mirror.ccs.tencentyun.com / docker.m.daocloud.io）能代理到已发布的镜像。
+4. `kubectl -n minipay set image` 逐个切成 digest 引用并等滚动完成（7 个服务全部成功、17/17 pod Running、
+   无 Failed 事件），随后跑线上验收 **27 passed / 0 failed**（含米灵真实模型 SSE、转账落账、商户扫码付款）。
+
+回退：把那 7 条 patch 加回去即可（tag + `IfNotPresent`，节点本地已有 tag 镜像，不会再拉取）。
 
 失败形态与判断依据（**已解决，留作经验**）：`docker push` 在小镜像（层可从其他仓库 mount）能秒成；
 真正要上传新层时报 `failed to do request: Put "https://registry-1.docker.io/v2/...": net/http: timeout awaiting response headers`，
@@ -438,8 +453,8 @@ R2 自定义域名 `download.su46proj.site`、DNS 记录 `download`/`dl`、两�
 
 ### 重建 consumer-bff / identity-service（每次改这两个服务都适用）
 
-`overlays/server/private/digests` 里 pin 的 digest 是更早的构建，本次上线改用 tag + `IfNotPresent`
-（见 overlay 的 patch，原因同 consumer-web：新镜像只在节点本地 containerd）。
+`overlays/server/private/digests` 现在 pin 的就是线上在跑的 digest（2026-09-27 起已恢复 digest 锁定，
+overlay 里的 tag patch 已删除）。重建后的流程是：推镜像 → 记 digest → 更新组件 → 滚动。
 
 ```bash
 # 1) 先跑测试（流水线打镜像是 -DskipTests，不能拿它当验证）
@@ -462,7 +477,10 @@ kubectl kustomize deploy/k3s/overlays/server | kubectl apply -f -
 # 3b) 推不上去时（本机 DNS 拿不到 registry-1.docker.io）：节点本地导入 + tag 覆盖
 docker save suqihang/consumer-bff:<tag> suqihang/identity-service:<tag> | \
   ssh <server> 'sudo k3s ctr -n k8s.io images import -'
-# 并把 overlay 里这两条 patch 的 tag 改成新值，再 apply；此时**不要**跑 pin-image-digests.ps1
+# 再把这两条 image patch（tag + IfNotPresent）加回 overlay，然后 apply —— 即临时退出 digest 锁定。
+# ⚠️ 2026-09-27 实测结论：Docker Hub 的推送失败几乎都发生在「最后一次提交 manifest」，
+#    层其实已经上传成功，**直接重试 `docker push` 即可完成**（详见下面「镜像发布实况」一节），
+#    所以优先用 3a，不要急着退回 3b。
 ```
 
 > 服务器上也能直接构建（它有 JDK 21 + Maven + Docker）：把源码 tar 上去，
