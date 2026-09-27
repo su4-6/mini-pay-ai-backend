@@ -451,6 +451,42 @@ R2 自定义域名 `download.su46proj.site`、DNS 记录 `download`/`dl`、两�
 `docker build --provenance=false --sbom=false` + `docker save` + `k3s ctr images import`），
 线上 `p__pay.fc6df3ee.async.js` 含 `BarcodeDetector` 与 `getUserMedia`，验收 17 passed / 0 failed。
 
+### 2026-09-27 「H5 打不开」事故与浏览器冒烟验收（务必沿用）
+
+用户报「H5 打不开」后定位到**两个前端根因**（与服务端/CF 无关：源站直连 8/8 次 200、6ms 稳定，
+经 CF 也 8/8 200；中间的 503/520 只是换 pod 的瞬时窗口）：
+
+1. **白屏**：`apps/consumer-h5/src/app.tsx` 导出了 `queryClient`。Umi 会把 `app.tsx` 的每个导出当运行时
+   插件注册，白名单（`.umi/core/plugin.ts` 的 `getValidKeys()`）里没有它 → `register()` 内断言抛
+   `register failed, invalid key queryClient .` → 应用启动中断、整页空白。
+2. **所有 GET 失败（界面显示「网络不可用」）**：同一个 `app.tsx` 的 `request.requestInterceptors` 用了
+   umi-request 的 `[url, options]` 元组写法，而生成的 `.umi/plugin-request/request.ts` 底层是 **axios**
+   —— 解构成 `{ url, options }` 后 `{ ...options, url }` **丢掉 `method`**，axios 在
+   `config.method.toUpperCase()` 抛 `Cannot read properties of undefined`，被 `services/http.ts`
+   归一化成 `NETWORK_UNAVAILABLE`（会话查询必挂 ⇒ 首页进不去）。
+
+**为什么之前没发现**：`acceptance-server.ps1` 只断言「index 可访问 + 引用到 umi chunk + API 流程」，
+全是 curl 级；**没有任何浏览器渲染断言**，所以白屏可以长期存在。
+
+**新增验收要求（改前端后必须做）**：除 API 验收外，跑一次真实浏览器冒烟 —— 用本机已装的 Edge
+（`chromium.launch({ channel: 'msedge' })`，不必下载 Playwright 浏览器）：
+
+1. `goto https://app.su46proj.site/` → 期望跳 `/login` 且 `#root` 渲染出登录表单；
+2. 勾选协议 → 获取验证码 → 填 `123456` → 登录 → 期望 `finalUrl=/` 且渲染出米灵会话页；
+3. 断言 `pageerror` / `console error` 为空、`/api/**` 全部 2xx。
+
+线上修复过程：k3s.4 修第 1 个根因（白屏消失）→ k3s.5 修第 2 个根因（GET 恢复）→ 浏览器实测
+「登录 → 首页」通过、零控制台错误。`consumer-web` 现按 digest
+`sha256:1509dc967db171cc18ad1e7374e572f7b01986eda3b074cb9a73b0157dbddd95` 部署。
+该镜像是**在节点上构建**的（本机 Docker Desktop 当时不稳定）：把 `apps/consumer-h5/dist` +
+`docker/k3s-web.Dockerfile` + `docker/k3s-static-nginx.conf` 传到节点 → `docker build` → `docker save`
+→ `k3s ctr images import` → **`ctr images tag <tag> <repo>@<digest>`**（关键：显式建立 digest 名，
+否则 digest 引用会去 registry 拉取而镜像源未必有该 digest —— 这一步没做时线上出现过
+`403 Forbidden ... docker.m.daocloud.io` 的 ImagePullBackOff 与 503）。
+
+> 另外两处潜在雷（当前是**死配置**，不影响运行，但改到时必须删）：`merchant-web` 与 `ops-web` 的
+> `app.tsx` 也写了同样元组风格的 `requestInterceptors`，只是它们不使用 umi 的 `request`（0 处引用）。
+
 ### 重建 consumer-bff / identity-service（每次改这两个服务都适用）
 
 `overlays/server/private/digests` 现在 pin 的就是线上在跑的 digest（2026-09-27 起已恢复 digest 锁定，
