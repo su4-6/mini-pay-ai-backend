@@ -69,6 +69,36 @@ docker push suqihang/<svc>:<tag>
   并在 `overlays/server/kustomization.yaml` 里用 tag + `imagePullPolicy: IfNotPresent` 覆盖 digest 引用。
   网络恢复后删掉该 patch 即回到 digest 锁定。
 
+### 2026-09-27 镜像发布实况（四颗新镜像）
+
+| 镜像 | 推送 Docker Hub | digest |
+|---|---|---|
+| `suqihang/consumer-web:0.1.0-k3s.3` | ✅ 已推送（含相机扫码那版） | `sha256:850509e35c8fcd73dee32ab6a98f40d9ea4f9e81b11a10a2a55c4c426c1567c7` |
+| `suqihang/consumer-bff:0.1.0-k3s.13` | ❌ 上传大 layer 超时 | 仅节点本地 containerd |
+| `suqihang/identity-service:0.1.0-k3s.12` | ❌ 同上 | 仅节点本地 containerd |
+| `suqihang/miling-service:0.1.0-k3s.3` | ❌ 同上 | 仅节点本地 containerd |
+
+失败形态与判断依据：`docker push` 在小镜像（层可从其他仓库 mount）能成功，但一旦要真的上传 Java 层就报
+`failed to do request: Put "https://registry-1.docker.io/v2/...": net/http: timeout awaiting response headers`；
+本机 `curl -s https://registry-1.docker.io/v2/` 返回 `000`、DNS 也解析不到（校园网对 docker.io 的直连/上传被拦），
+而 Docker Desktop 的 `hubproxy` 只加速**拉取**，推送仍走直连。所以这三颗的发布是**网络限制**，不是漏做。
+
+从节点把镜像取回本机补推（本次实际用过的完整步骤，逐颗做最稳）：
+
+```bash
+# 1) 节点：containerd → docker → 单镜像 tar
+ssh <server> "sudo k3s ctr -n k8s.io images export /tmp/oci.tar docker.io/suqihang/<img>:<tag>"
+ssh <server> "sudo docker load -i /tmp/oci.tar && sudo docker save suqihang/<img>:<tag> -o /tmp/out.tar && sudo chmod 644 /tmp/out.tar"
+# 2) 回本机 → 推送
+scp <server>:/tmp/out.tar . && docker load -i out.tar && docker push suqihang/<img>:<tag>
+# 3) 记录 digest（也可用 push 输出里那行 digest）
+docker inspect --format '{{index .RepoDigests 0}}' suqihang/<img>:<tag>
+```
+
+> 注意：`k3s ctr images export` 在**边导出边 `docker load`** 时，多个镜像合在一个 tar 里会带上重复的基础层
+> （nginx/JRE），逐颗导出更省空间也更好排查；导出前记得留 ~2 倍镜像大小的临时空间。
+> 长期推不上去时就用本仓既定的 **tag + `IfNotPresent`**，节点本地已有镜像，运行不受影响。
+
 ## 外卖（YShop）栈的下线与恢复
 
 外卖模块（`yshop-server` / `yshop-food-h5` / `yshop-admin-web`）在内存紧张时整体下线，
