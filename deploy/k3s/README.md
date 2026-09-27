@@ -71,19 +71,26 @@ docker push suqihang/<svc>:<tag>
 
 ### 2026-09-27 镜像发布实况（四颗新镜像）
 
-| 镜像 | 推送 Docker Hub | digest |
+| 镜像 | 推送 Docker Hub | digest（registry 权威值） |
 |---|---|---|
-| `suqihang/consumer-web:0.1.0-k3s.3` | ✅ 已推送（含相机扫码那版） | `sha256:850509e35c8fcd73dee32ab6a98f40d9ea4f9e81b11a10a2a55c4c426c1567c7` |
-| `suqihang/consumer-bff:0.1.0-k3s.13` | ❌ 上传大 layer 超时 | 仅节点本地 containerd |
-| `suqihang/identity-service:0.1.0-k3s.12` | ❌ 同上 | 仅节点本地 containerd |
-| `suqihang/miling-service:0.1.0-k3s.3` | ❌ 同上 | 仅节点本地 containerd |
+| `suqihang/consumer-web:0.1.0-k3s.3` | ✅ | `sha256:850509e35c8fcd73dee32ab6a98f40d9ea4f9e81b11a10a2a55c4c426c1567c7` |
+| `suqihang/consumer-bff:0.1.0-k3s.13` | ✅ | `sha256:104f64c2ca31f46b5d9a7062bba5ebfb85aa82712aed1a4de8786f2cec54d556` |
+| `suqihang/identity-service:0.1.0-k3s.12` | ✅ | `sha256:5cf478728c23cf848d08cdddb240f4f574cc2c2f9dd72a023d27d6fd19036139` |
+| `suqihang/miling-service:0.1.0-k3s.3` | ✅ | `sha256:c02f73c7766bd07db64a9d441163442b78c5e82c5004ae6fab9d23ed2c6700ef` |
 
-失败形态与判断依据：`docker push` 在小镜像（层可从其他仓库 mount）能成功，但一旦要真的上传 Java 层就报
-`failed to do request: Put "https://registry-1.docker.io/v2/...": net/http: timeout awaiting response headers`；
-本机 `curl -s https://registry-1.docker.io/v2/` 返回 `000`、DNS 也解析不到（校园网对 docker.io 的直连/上传被拦），
-而 Docker Desktop 的 `hubproxy` 只加速**拉取**，推送仍走直连。所以这三颗的发布是**网络限制**，不是漏做。
+四颗都已发布，因此**现在具备切回 digest 锁定的条件**（见本文件前面的 pin 流程）；线上暂时仍按 tag + `IfNotPresent` 引用，避免为纯记录变更做一次无谓滚动。
 
-从节点把镜像取回本机补推（本次实际用过的完整步骤，逐颗做最稳）：
+失败形态与判断依据（**已解决，留作经验**）：`docker push` 在小镜像（层可从其他仓库 mount）能秒成；
+真正要上传新层时报 `failed to do request: Put "https://registry-1.docker.io/v2/...": net/http: timeout awaiting response headers`，
+本机 `curl -s https://registry-1.docker.io/v2/` 返回 `000`、DNS 也解析不到（校园网对 docker.io 直连有限制）。
+
+**结论：这类失败只是"最后一次提交 manifest 超时"，层其实已经上传成功 —— 直接重试即可。**
+实测三颗失败镜像重试一次都在 16 秒内完成（日志显示 `Layer already exists`），miling 那颗 7 层传了 654 秒后一次成功。
+上传/下载速率实测约 **320–350 KB/s**（25 MB 全新层 73.7s），所以三颗合计约 500 MB 需要 ~25 分钟，
+**不要用 10 分钟的固定等待去判定失败，重试是正确姿势**；`--max-concurrent-uploads` 是 dockerd 参数、不是 CLI 参数，
+`docker push --max-concurrent-uploads=1` 会直接报用法错误。
+
+下面这段是从节点取回镜像再补推的完整过程（本次实际用过，逐颗做最稳）：
 
 ```bash
 # 1) 节点：containerd → docker → 单镜像 tar
