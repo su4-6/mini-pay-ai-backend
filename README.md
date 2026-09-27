@@ -4,8 +4,9 @@ MiniPay AI 是一套**支付 + 生活服务（点餐外卖 + AI 助手「米灵�
 8 个 Spring Boot 微服务、独立的钱包与复式账本、跨钱包分片转账用 Seata TCC，外卖以独立单体接入，
 全部通过 NGINX Gateway Fabric（Gateway API）暴露在同一套域名之下。
 
-- **在线体验**：运营平台 [ops.su46proj.site/ops](https://ops.su46proj.site/ops/) · 商户平台 [merchant.su46proj.site/merchant](https://merchant.su46proj.site/merchant/) · 系统管理 [admin.su46proj.site](https://admin.su46proj.site/)
-- **前端与 App**：[mini-pay-ai-frontend](https://github.com/su4-6/mini-pay-ai-frontend)
+- **在线体验**：消费者端 [app.su46proj.site](https://app.su46proj.site/) · 运营平台 [ops.su46proj.site/ops](https://ops.su46proj.site/ops/) · 商户平台 [merchant.su46proj.site/merchant](https://merchant.su46proj.site/merchant/) · 系统管理 [admin.su46proj.site](https://admin.su46proj.site/)
+- **前端与 App**：[mini-pay-ai-frontend](https://github.com/su4-6/mini-pay-ai-frontend)（消费者 H5 与三套控制台；Android 已下线，见该仓 `android/RETIRED.md`）
+- **AI 助手「米灵」实现**：[ai-agent-scaffold-lite](https://github.com/su4-6/ai-agent-scaffold-lite)（DDD 脚手架落成的 `miling-service`）
 - **新人上手**：[RUNBOOK.md](RUNBOOK.md)（本地全量运行、IDE 调试、真机联调） · **部署手册**：[deploy/k3s/README.md](deploy/k3s/README.md)
 
 ## 业务能力
@@ -21,7 +22,10 @@ MiniPay AI 是一套**支付 + 生活服务（点餐外卖 + AI 助手「米灵�
 | AI 助手 | 会话与 SSE 流式回复、白名单工具调用（查余额/账单/下单等）、记忆与 Trace |
 | 管理端 | 运营总览指标、订单与审核后台、账号与角色、登录审计、服务健康聚合 |
 
-> 演示环境的外卖入口当前显示维护页，外卖服务、源码与镜像都是完整的，可按需启停。
+> 演示环境的外卖入口当前显示维护页；外卖服务、源码与镜像都是完整的，可按需启停。
+> C 端已从 Android App 换成消费者 H5（`app.su46proj.site`），App 相关的服务器侧支撑
+> （`agent-service`、`commerce-service`、yshop 中间件、coturn）已下线以收敛内存，
+> 详见前端仓库 `android/RETIRED.md`。
 
 ## 架构
 
@@ -31,8 +35,10 @@ MiniPay AI 是一套**支付 + 生活服务（点餐外卖 + AI 助手「米灵�
                      NGINX Gateway Fabric + Gateway API
         ┌───────────────┬───────────────┬────────────────┬───────────────┐
         │               │               │                │               │
-   ops-web/        merchant-web/    admin-web/       consumer-bff/   外卖 H5 与后台
-   management-bff  management-bff   admin-bff        （App / Web）   yshop-server（独立单体）
+   ops-web/        merchant-web/    admin-web/     consumer-web/    外卖 H5 与后台
+   management-bff  management-bff   admin-bff      consumer-bff      yshop-server（独立单体）
+                                                      │
+                                                   miling-service（米灵）
         │               │               │                │               │
         └───────────────┴───────┬───────┴────────────────┘          bridge-contract
                                 │                                    （订单/支付协作）
@@ -56,8 +62,10 @@ MiniPay AI 是一套**支付 + 生活服务（点餐外卖 + AI 助手「米灵�
 | `payment-service` | 8082 | 支付、退款、转账单、充值/提现、商户与应用、日汇总指标、图片预签名 |
 | `wallet-service` | 8083 | 单一 CNY 钱包库、冻结、复式账本与 Seata TCC 分支 |
 | `commerce-service` | 8085 | 点餐/外卖订单、购物车与结算单、门店/菜单/库存、骑手与配送 |
-| `agent-service` | 8086 | AI 会话、SSE 流式回复、工具路由与 Trace（工具白名单） |
-| `consumer-bff` | 8087 | Consumer Web/App 安全会话与 API 代理 |
+| `agent-service` | 8086 | AI 会话、SSE 流式回复、工具路由与 Trace（工具白名单）。**已被 `miling-service` 取代，线上 0 副本**（源码保留） |
+| `miling-service` | 8080(集群内) | 米灵（AI 助手）现行实现，由 `ai-agent-scaffold-lite` 脚手架落成：会话与消息持久化在 Redis、SSE 流式回复、只读工具白名单 |
+| `consumer-web` | 80(集群内) | 消费者 H5 静态产物（`app.su46proj.site`），取代原 Android App |
+| `consumer-bff` | 8087 | Consumer H5 安全会话与 API 代理（Cookie 会话 + CSRF，token 不下发浏览器） |
 | `management-bff` | 8088 | 运营端与商户端安全会话、API 代理与图片代传 |
 | `admin-bff` | 8089 | 系统管理端安全会话、账号/审计代理与服务健康聚合 |
 | `yshop-server` | 48080 | 外卖独立单体（独立库 `yixiang_drink`、后台与 H5 前端由前端仓库构建） |
@@ -114,8 +122,8 @@ docker run --rm -v "${PWD}:/workspace" -w /workspace maven:3.9.11-eclipse-temuri
 线上是单节点 K3s：中间件（MySQL ×2 / Redis ×2 / RabbitMQ / Seata）跑在宿主机 Compose，
 业务与前端跑在集群里，入口由 NGINX Gateway Fabric 按 HTTPRoute 分流，TLS 与静态缓存由 Cloudflare 承担。
 
-- **两套 CDN 并存**：页面与接口走 Cloudflare（控制台的静态外壳由 Worker 做边缘缓存）；
-  **APK 下载走腾讯云境内 CDN** `dl.su46proj.site`（源站仍是 R2 的 `download.su46proj.site`，国内实测 40 MB 从 156 s 降到 3.4 s）。
+- **边缘与入口**：页面与接口都走 Cloudflare（控制台的静态外壳由 Worker 做边缘缓存）；
+  **APK 下载及腾讯云 CDN 已随 Android 端一并下线**（删 APK 释放的是磁盘与流量，不是内存）。
 - 部署手册（清单分层、构建与推送镜像、网关与证书、外卖栈启停、CDN/证书运维、日常运维与回滚）：[deploy/k3s/README.md](deploy/k3s/README.md)
 - 中间件编排：[deploy/compose-infra/README.md](deploy/compose-infra/README.md)
 - 环境变量名契约：[`.env.example`](.env.example)（本地）· [`.env.production.example`](.env.production.example)（线上）
@@ -131,7 +139,7 @@ docker run --rm -v "${PWD}:/workspace" -w /workspace maven:3.9.11-eclipse-temuri
 | 邮件验证码 | `EMAIL_PROVIDER=smtp` + SMTP 凭证；未配置时需把 `MANAGEMENT_HEALTH_MAIL_ENABLED` 设为 `false`，否则健康检查会因邮件指示器失败 |
 | 实名与内容安全 | `REAL_NAME_PROVIDER`（演示环境用 `sandbox`：证件尾号非 0 即通过，且不校验身份证格式）/ `CONTENT_SAFETY_PROVIDER` |
 | AI 助手「米灵」 | `MODEL_ENABLED=true` + `MODEL_CHAT_MODE=openai` + `MODEL_BASE_URL` + `MODEL_NAME` + `MODEL_API_KEY`（任意 OpenAI 兼容服务；演示环境接的是智谱 GLM `glm-4.5-air`） |
-| 高德地图 | Web JS Key + jscode（前端构建期）、Android Key（App 构建期）、`YSHOP_MINIPAY_AMAP_WEB_KEY`（外卖 H5） |
+| 高德地图 | Web JS Key + jscode（前端构建期）、`YSHOP_MINIPAY_AMAP_WEB_KEY`（外卖 H5，外卖已下线）。Android Key 随 App 下线不再需要 |
 
 ## 文档
 

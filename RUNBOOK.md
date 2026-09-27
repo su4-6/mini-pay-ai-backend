@@ -208,7 +208,13 @@ PORT=8003 pnpm --filter @minipay/ops-web dev
 pnpm verify
 ```
 
-## 9. Android 真机调试
+## 9. Android 真机调试（该端已下线，本节仅对保留源码生效）
+
+> ⚠️ 消费者端已从 Android App 换成 H5（`apps/consumer-h5`，入口 https://app.su46proj.site）。
+> Android 不再发布、不再修缺陷；线上支撑也已按内存收敛下线：`agent-service`（被 `miling-service`
+> 取代）、`commerce-service`、宿主机 `yshop-mysql/redis`、`coturn`。因此**拿旧包直连线上已经跑不通**
+> 登录之外的完整功能，必须本地全量起后端。下线范围、恢复步骤见前端仓库
+> [android/RETIRED.md](../mini-pay-ai-frontend/android/RETIRED.md)。
 
 在 `mini-pay-ai-frontend/android/local.properties` 中配置本机 Android SDK。Debug API 默认使用手机的 `127.0.0.1`，通过 USB 映射到开发机：
 
