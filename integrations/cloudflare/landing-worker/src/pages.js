@@ -28,10 +28,10 @@ const POLICE_URL = 'https://beian.mps.gov.cn/#/query/webSearch?code=410105020080
 const AUTHOR_EMAIL = 'su_qihang@163.com';
 const AUTHOR_MAILTO = 'mailto:su_qihang@163.com';
 const SITE_URL = 'https://su46proj.site/';
-// APK 下载走腾讯云 CDN（境内加速，**变更 #60**）：40 MB 实测 156s → 3.4s。
-// 源站是 R2 的 download.su46proj.site；CDN 挂了或要回退时改回下面那行的 R2 直连地址即可。
-const APK_URL = 'https://dl.su46proj.site/downloads/minipay-latest.apk';
-const APK_URL_FALLBACK = 'https://download.su46proj.site/downloads/minipay-latest.apk';
+// 消费者端已从 Android App 换成 H5：线上不再分发安装包，落地页只指向 H5 入口。
+// （App 源码保留在 mini-pay-ai-frontend-clean/android，退役说明见 android/RETIRED.md；
+//   原来的 APK_URL / APK_URL_FALLBACK 与 R2 分发路径已随之删除。）
+const CONSUMER_H5_URL = 'https://app.su46proj.site/';
 const PROJECT_URL = 'https://pay.su46proj.site/';
 
 /* ------------------------------------------------------------------ */
@@ -54,7 +54,7 @@ const PROJECTS = [
     name: 'MiniPay AI',
     tagline: '数字支付 / 钱包 / 外卖一体化演示平台',
     description:
-      '我自己完整实现并长期维护的一套支付与本地生活演示平台。从统一身份认证、复式账本钱包到支付编排、对账与外卖配送，全部跑在自建的 K3s 集群上，并带一个只能调用白名单工具的 AI 助手。',
+      '我自己完整实现并长期维护的一套支付与本地生活演示平台。从统一身份认证、复式账本钱包到支付编排、对账与外卖配送，全部跑在自建的 K3s 集群上，并带一个只能调用白名单工具的 AI 助手；消费者端是一套 H5，打开就能用，不用装 App。',
     tags: ['Java 21', 'Spring Boot 3', 'K3s', 'OAuth2 + PKCE', '复式账本'],
     url: PROJECT_URL,
     status: '在线运行',
@@ -75,8 +75,8 @@ const PROJECTS = [
 /** Grounded platform facts. No invented achievements or numbers. */
 const FACTS = [
   { n: '6', k: '个后端微服务', d: '各自独占数据' },
-  { n: '15', k: '个运行中工作负载', d: '同一套 K3s' },
-  { n: '5', k: '个 Web 端入口', d: '含 Android App' },
+  { n: '12', k: '个运行中工作负载', d: '同一套 K3s' },
+  { n: '6', k: '个 Web 端入口', d: '含消费者 H5' },
   { n: '1', k: '套自建 K3s 集群', d: 'Cloudflare 回源' },
 ];
 
@@ -98,9 +98,9 @@ const TECH_GROUPS = [
     items: ['React', 'umi', 'TypeScript', '响应式布局'],
   },
   {
-    name: '移动端',
-    note: '用户端 App',
-    items: ['Android', 'Jetpack Compose', 'Kotlin'],
+    name: '用户端',
+    note: '消费者 H5',
+    items: ['React', 'umi (@umijs/max)', 'Ant Design Mobile', 'SSE 流式对话'],
   },
   {
     name: '云与边缘',
@@ -643,6 +643,7 @@ ${HEAD_META}
     <p class="lede">独立开发者，后端与全栈。一个人写服务、搭集群、做界面，目前主要在做 MiniPay AI：把支付、钱包和外卖业务放在同一套微服务里的演示平台。我关心的不是功能列表有多长，而是钱有没有算对、账能不能对上、服务挂掉之后能不能自己恢复。</p>
     <div class="acts">
       <a class="btn solid" href="${PROJECT_URL}">查看项目<span class="arrow" aria-hidden="true">→</span></a>
+      <a class="btn" href="${CONSUMER_H5_URL}">打开消费者 H5</a>
       <a class="btn" href="${AUTHOR_MAILTO}">联系我</a>
     </div>
     <div class="facts">
@@ -672,7 +673,7 @@ ${sectionHead('01', '关于我 / About', '我怎么写代码，以及我在意�
       <div class="prose body">
         <p>我做的事情集中在资金相关的系统上：一笔支付从下单、扣款、回调到对账，中间会经过好几个服务，每一步都可能重复、超时或者失败。我喜欢把这类问题拆干净——谁拥有这份数据、状态机怎么流转、哪一步必须幂等、出错了从哪里补——然后再写代码。</p>
         <p>工程上我倾向于约束自己：服务之间只通过版本化接口和可靠事件协作，不跨库查询；余额和账本由一个服务独占写入，读写落在同一个本地事务里；金额统一用整数存分，不做浮点运算；纠错只允许冲正，不允许直接改数。这些规则听起来啰嗦，但它们决定了系统在出错的时候是可控的还是失控的。</p>
-        <p>除了后端，我也会把整套东西自己部署起来：K3s 上跑服务与中间件，网关负责路由和 TLS，Cloudflare 放在最外层做 DNS、证书和静态内容分发。前端用 React + umi 写 B 端控制台，用 Jetpack Compose 写 Android 端。全链路自己走一遍，才知道哪些设计只是看起来合理。</p>
+        <p>除了后端，我也会把整套东西自己部署起来：K3s 上跑服务与中间件，网关负责路由和 TLS，Cloudflare 放在最外层做 DNS、证书和静态内容分发。B 端控制台用 React + umi 写，消费者端是一套 H5（同样是 React + umi，短信登录、流式 AI 对话、钱包与转账都在里面）。全链路自己走一遍，才知道哪些设计只是看起来合理。</p>
       </div>
     </div>
   </section>
@@ -757,9 +758,9 @@ const CAPABILITIES = [
   },
   {
     no: '06',
-    name: '多端 B 端控制台',
-    text: '运营端、商户端、管理端和外卖后台四套控制台，加上外卖 H5 与 Android App，分别对应平台方、商户方和消费者三个视角，看的是同一份数据。',
-    tags: ['React', 'umi', '响应式', 'Android'],
+    name: '多端入口',
+    text: '运营端、商户端、管理端和外卖后台四套控制台，加上外卖 H5 与消费者 H5，分别对应平台方、商户方和消费者三个视角，看的是同一份数据。消费者端已由 H5 取代原来的 Android App。',
+    tags: ['React', 'umi', '响应式', '消费者 H5'],
   },
 ];
 
@@ -767,7 +768,7 @@ const ARCH_LADDER = [
   {
     name: '边缘接入',
     tag: 'CLOUDFLARE',
-    text: 'Cloudflare 负责 DNS、TLS 证书与边缘缓存；这个 Worker 托管个人主页、本页和 APK 下载，其余流量按原样回源，不做改写。',
+    text: 'Cloudflare 负责 DNS、TLS 证书与边缘缓存；这个 Worker 托管个人主页与本页，其余流量按原样回源，不做改写。',
   },
   {
     name: '集群入口',
@@ -787,7 +788,7 @@ const ARCH_LADDER = [
   {
     name: '数据与中间件',
     tag: 'DATA',
-    text: 'MySQL 存业务数据，Redis 承载缓存与令牌，RabbitMQ 传递领域事件，Seata 协调分布式事务，Cloudflare R2 存放 APK 与对象资源。',
+    text: 'MySQL 存业务数据，Redis 承载缓存与令牌，RabbitMQ 传递领域事件，Seata 协调分布式事务，对象存储承载头像等静态资源。',
   },
 ];
 
@@ -795,6 +796,7 @@ const ENTRIES = [
   { name: '运营端', host: 'ops.su46proj.site', url: 'https://ops.su46proj.site/', desc: '平台运营工作台' },
   { name: '商户端', host: 'merchant.su46proj.site', url: 'https://merchant.su46proj.site/', desc: '商户自助后台' },
   { name: '管理端', host: 'admin.su46proj.site', url: 'https://admin.su46proj.site/', desc: '系统管理后台' },
+  { name: '消费者 H5', host: 'app.su46proj.site', url: CONSUMER_H5_URL, desc: '短信登录、米灵对话、钱包与转账' },
   { name: '外卖 H5', host: 'food.su46proj.site', url: 'https://food.su46proj.site/', desc: '消费者下单页' },
   { name: '外卖后台', host: 'food-admin.su46proj.site', url: 'https://food-admin.su46proj.site/', desc: '订单与配送管理' },
 ];
@@ -803,8 +805,9 @@ const ACCOUNTS = [
   { sys: '运营端', user: '13800138000', pw: 'MiniPay@123456', host: 'ops.su46proj.site', url: 'https://ops.su46proj.site/' },
   { sys: '商户端', user: '13900000009', pw: 'MiniPay@123456', host: 'merchant.su46proj.site', url: 'https://merchant.su46proj.site/' },
   { sys: '管理端', user: '13800138002', pw: 'MiniPay@123456', host: 'admin.su46proj.site', url: 'https://admin.su46proj.site/' },
+  { sys: '消费者 H5', user: '任意演示手机号', pw: '123456', host: 'app.su46proj.site', url: CONSUMER_H5_URL },
   { sys: '外卖后台', user: 'admin', pw: 'admin123', host: 'food-admin.su46proj.site', url: 'https://food-admin.su46proj.site/' },
-  { sys: '外卖 H5 / App', user: '任意演示手机号', pw: '123456', host: 'food.su46proj.site', url: 'https://food.su46proj.site/' },
+  { sys: '外卖 H5', user: '任意演示手机号', pw: '123456', host: 'food.su46proj.site', url: 'https://food.su46proj.site/' },
 ];
 
 const STEPS = [
@@ -812,8 +815,8 @@ const STEPS = [
   { t: '再对比运营端和商户端', d: '用 13800138000 登录 ops.su46proj.site、用 13900000009 登录 merchant.su46proj.site，同一个订单在平台视角和商户视角下的差别一眼就能看出来。' },
   { t: '去外卖 H5 下一单', d: '打开 food.su46proj.site，选门店、加购物车并下单，用验证码 123456 登录，再用钱包完成支付。' },
   { t: '回到外卖后台看订单流转', d: '用 admin / admin123 登录 food-admin.su46proj.site，找到刚才那笔订单，走一遍接单、配送、完成的状态流转。' },
-  { t: '装 App 看移动端', d: '下载并安装 Android App，用任意演示手机号加验证码 123456 登录，查看钱包余额、账单明细和外卖入口。' },
-  { t: '试一下 AI 智能助手', d: '在助手对话里查询订单或余额，观察它是通过工具接口取数，而不是直接访问数据库。' },
+  { t: '打开消费者 H5 看用户端', d: '打开 app.su46proj.site，用任意演示手机号加验证码 123456 登录，看钱包余额与账单明细、打开收款码，再试一次沙箱转账，最后和米灵聊几句（回答是逐字流式出现的）。' },
+  { t: '试一下 AI 智能助手', d: '在米灵对话里查询订单或余额，观察它是通过白名单工具接口取数，而不是直接访问数据库；登录密码、支付密码和验证码都不经过模型。' },
 ];
 
 const LANDING_CSS = `
@@ -914,17 +917,17 @@ ${HEAD_META}
     <div class="acts">
       <a class="btn solid" href="https://admin.su46proj.site/" target="_blank" rel="noopener">进入管理端<span class="arrow" aria-hidden="true">↗</span></a>
       <a class="btn" href="https://ops.su46proj.site/" target="_blank" rel="noopener">进入运营端</a>
-      <a class="btn" href="${APK_URL}" target="_blank" rel="noopener">下载 Android App</a>
+      <a class="btn" href="${CONSUMER_H5_URL}" target="_blank" rel="noopener">打开消费者 H5</a>
     </div>
     <div class="toptags">
       <span class="chip">OAuth2 + PKCE</span>
       <span class="chip">复式账本</span>
       <span class="chip">K3s 私有部署</span>
       <span class="chip">Spring Boot 3</span>
-      <span class="chip">Android App</span>
+      <span class="chip">消费者 H5</span>
     </div>
     <div class="factbar">
-      <div class="f"><p class="k">模块入口</p><p class="v">5 个<small>运营端 / 商户端 / 管理端 / 外卖 H5 / 外卖后台</small></p></div>
+      <div class="f"><p class="k">模块入口</p><p class="v">6 个<small>运营端 / 商户端 / 管理端 / 消费者 H5 / 外卖 H5 / 外卖后台</small></p></div>
       <div class="f"><p class="k">认证方式</p><p class="v">OAuth2 + PKCE<small>图形验证码，手机号哈希存储</small></p></div>
       <div class="f"><p class="k">账务模型</p><p class="v">复式记账<small>金额以人民币分的整数存储</small></p></div>
       <div class="f"><p class="k">部署形态</p><p class="v">单套 K3s 集群<small>Cloudflare 边缘接入与回源</small></p></div>
@@ -947,7 +950,7 @@ ${renderLadder()}
   </section>
 
   <section id="entries" class="col">
-${sectionHead('03', '模块入口', '五个可以打开的演示入口', '都在同一个演示环境内，账号通用、数据互通，点开就是真实页面。')}
+${sectionHead('03', '模块入口', '六个可以打开的演示入口', '都在同一个演示环境内，账号通用、数据互通，点开就是真实页面。')}
     <div class="entries">
 ${renderEntries()}
     </div>
@@ -966,7 +969,7 @@ ${renderAccounts()}
         </tbody>
       </table>
     </div>
-    <p class="note-line">App 登录和外卖 H5 的短信验证码固定为 <code>123456</code>，手机号填任意演示号码即可。演示环境的数据可能会定期重置。</p>
+    <p class="note-line">消费者 H5 和外卖 H5 的短信验证码固定为 <code>123456</code>，手机号填任意演示号码即可。演示环境的数据可能会定期重置。</p>
   </section>
 
   <section id="howto" class="col">
@@ -979,11 +982,11 @@ ${renderSteps()}
   <section class="col">
     <div class="band2">
       <div class="t">
-        <h3>Android App 下载</h3>
-        <p>用户在手机上的完整体验：钱包余额、支付、账单明细、外卖下单入口，用短信验证码登录。安装包由国内 CDN 加速分发（源站为对象存储），点开即下，不带跳转页。</p>
-        <p class="f">${APK_URL}</p>
+        <h3>消费者 H5 入口</h3>
+        <p>用户在手机上的完整体验：短信验证码登录、米灵 AI 对话（逐字流式回答）、钱包余额与账单明细、个人收款码，以及沙箱转账与付款。金额与状态一律以后端权威接口为准，H5 只是一层界面。</p>
+        <p class="f">${CONSUMER_H5_URL}</p>
       </div>
-      <a class="btn solid" href="${APK_URL}" target="_blank" rel="noopener">下载 APK</a>
+      <a class="btn solid" href="${CONSUMER_H5_URL}" target="_blank" rel="noopener">打开 H5</a>
     </div>
     <div class="notice" style="margin-top:26px">
       <span class="mark" aria-hidden="true"></span>

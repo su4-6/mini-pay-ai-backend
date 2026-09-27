@@ -59,6 +59,8 @@ public class ConsumerAuthorizationCodeService {
     private final String expectedRedirectUri;
     private final String merchantClientId;
     private final String merchantRedirectUri;
+    private final String consumerBffClientId;
+    private final String consumerBffRedirectUri;
     private final Duration codeTtl;
     private final SecureRandom random = new SecureRandom();
 
@@ -71,6 +73,8 @@ public class ConsumerAuthorizationCodeService {
             @Value("${minipay.identity.android-client.redirect-uri}") String expectedRedirectUri,
             @Value("${minipay.identity.merchant-bff-client.client-id}") String merchantClientId,
             @Value("${minipay.identity.merchant-bff-client.redirect-uri}") String merchantRedirectUri,
+            @Value("${minipay.identity.consumer-bff-client.client-id}") String consumerBffClientId,
+            @Value("${minipay.identity.consumer-bff-client.redirect-uri}") String consumerBffRedirectUri,
             @Value("${minipay.identity.android-client.authorization-code-ttl:60s}") Duration codeTtl) {
         this.clients = clients;
         this.authorizations = authorizations;
@@ -79,6 +83,8 @@ public class ConsumerAuthorizationCodeService {
         this.expectedRedirectUri = expectedRedirectUri;
         this.merchantClientId = merchantClientId;
         this.merchantRedirectUri = merchantRedirectUri;
+        this.consumerBffClientId = consumerBffClientId;
+        this.consumerBffRedirectUri = consumerBffRedirectUri;
         this.codeTtl = codeTtl;
     }
 
@@ -96,6 +102,8 @@ public class ConsumerAuthorizationCodeService {
         this.expectedRedirectUri = expectedRedirectUri;
         this.merchantClientId = expectedClientId;
         this.merchantRedirectUri = expectedRedirectUri;
+        this.consumerBffClientId = expectedClientId;
+        this.consumerBffRedirectUri = expectedRedirectUri;
         this.codeTtl = codeTtl;
     }
 
@@ -154,7 +162,9 @@ public class ConsumerAuthorizationCodeService {
     private RegisteredClient validateClient(String clientId, String redirectUri) {
         boolean androidClient = expectedClientId.equals(clientId) && expectedRedirectUri.equals(redirectUri);
         boolean merchantBffClient = merchantClientId.equals(clientId) && merchantRedirectUri.equals(redirectUri);
-        if (!androidClient && !merchantBffClient) {
+        boolean consumerBffClient =
+                consumerBffClientId.equals(clientId) && consumerBffRedirectUri.equals(redirectUri);
+        if (!androidClient && !merchantBffClient && !consumerBffClient) {
             throw new LoginRejectedException("OAUTH_CLIENT_INVALID");
         }
         RegisteredClient client = clients.findByClientId(clientId);

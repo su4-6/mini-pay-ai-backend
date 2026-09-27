@@ -89,6 +89,74 @@ class ConsumerAuthorizationCodeServiceTest {
         verify(authorizations, never()).save(any());
     }
 
+    @Test
+    void issuesCodesForTheConsumerBffClientAndDropsScopesOutsideTheConsumerAllowList() {
+        String bffClientId = "minipay-consumer-bff";
+        String bffRedirectUri = "http://localhost:8087/session/callback";
+        ConsumerAuthorizationCodeService bffService = bffService(bffClientId, bffRedirectUri);
+        when(clients.findByClientId(bffClientId))
+                .thenReturn(consumerBffClient(bffClientId, bffRedirectUri));
+
+        bffService.issue(
+                new ConsumerPrincipal(UUID.randomUUID(), "米灵用户", false),
+                bffClientId,
+                bffRedirectUri,
+                CHALLENGE,
+                "S256",
+                "bff-session");
+
+        ArgumentCaptor<OAuth2Authorization> saved =
+                ArgumentCaptor.forClass(OAuth2Authorization.class);
+        verify(authorizations).save(saved.capture());
+        assertThat(saved.getValue().getAuthorizedScopes())
+                .containsExactlyInAnyOrderElementsOf(SecurityConfiguration.consumerBffScopes());
+    }
+
+    @Test
+    void rejectsBffClientThatReusesAnotherClientsRedirectUri() {
+        String bffClientId = "minipay-consumer-bff";
+        ConsumerAuthorizationCodeService bffService = bffService(
+                bffClientId, "http://localhost:8087/session/callback");
+
+        assertThatThrownBy(() -> bffService.issue(
+                new ConsumerPrincipal(UUID.randomUUID(), "米灵用户", false),
+                bffClientId,
+                REDIRECT_URI,
+                CHALLENGE,
+                "S256",
+                "device"))
+                .isInstanceOf(LoginRejectedException.class)
+                .extracting("code")
+                .isEqualTo("OAUTH_CLIENT_INVALID");
+        verify(authorizations, never()).save(any());
+    }
+
+    /**
+     * The package-private constructor takes the Android client as the {@code expectedClient}
+     * argument, so the consumer BFF identity must be supplied explicitly.
+     */
+    private ConsumerAuthorizationCodeService bffService(String clientId, String redirectUri) {
+        return new ConsumerAuthorizationCodeService(
+                clients,
+                authorizations,
+                "http://localhost:8081",
+                clientId,
+                redirectUri,
+                Duration.ofSeconds(60));
+    }
+
+    private RegisteredClient consumerBffClient(String clientId, String redirectUri) {
+        RegisteredClient.Builder builder = RegisteredClient.withId(UUID.randomUUID().toString())
+                .clientId(clientId)
+                .clientAuthenticationMethod(ClientAuthenticationMethod.NONE)
+                .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+                .authorizationGrantType(AuthorizationGrantType.REFRESH_TOKEN)
+                .redirectUri(redirectUri)
+                .clientSettings(ClientSettings.builder().requireProofKey(true).build());
+        SecurityConfiguration.consumerBffScopes().forEach(builder::scope);
+        return builder.build();
+    }
+
     private RegisteredClient androidClient() {
         return RegisteredClient.withId(UUID.randomUUID().toString())
                 .clientId(CLIENT_ID)

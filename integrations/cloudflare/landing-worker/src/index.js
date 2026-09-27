@@ -3,8 +3,11 @@
  *
  * Responsibilities:
  *   1. Render two self-contained HTML pages (personal homepage + product landing).
- *   2. Serve the Android APK from the R2 bucket on download.su46proj.site.
- *   3. Pass every other host and every API path through to the Kubernetes origin.
+ *   2. Pass every other host and every API path through to the Kubernetes origin.
+ *
+ * 曾经还有第 3 项「从 R2 分片下发 Android 安装包」：消费者端换成 H5 后，
+ * download.su46proj.site 的 R2 自定义域名、`DOWNLOADS` 绑定与整个下载分支都已删除
+ * （退役说明见前端仓库 android/RETIRED.md）。
  */
 
 import { personalHomePage, projectLandingPage } from './pages.js';
@@ -12,7 +15,6 @@ import { personalHomePage, projectLandingPage } from './pages.js';
 /** Hosts that this Worker renders itself. Everything else is passed through. */
 const PERSONAL_HOSTS = new Set(['su46proj.site', 'www.su46proj.site']);
 const LANDING_HOSTS = new Set(['pay.su46proj.site']);
-const DOWNLOAD_HOSTS = new Set(['download.su46proj.site']);
 
 /** Path prefixes that must always reach the origin, never return HTML or files. */
 const API_PATH_PREFIXES = [
@@ -26,14 +28,6 @@ const API_PATH_PREFIXES = [
   '/actuator/',
   '/.well-known/',
 ];
-
-const CONTENT_TYPES = {
-  apk: 'application/vnd.android.package-archive',
-  txt: 'text/plain; charset=utf-8',
-  json: 'application/json; charset=utf-8',
-};
-
-const DEFAULT_CONTENT_TYPE = 'application/octet-stream';
 
 /**
  * 控制台静态外壳的 Worker 边缘缓存（**变更 #61**）。
@@ -147,70 +141,6 @@ function htmlResponse(htmlBody) {
   });
 }
 
-function plainResponse(body, status) {
-  return new Response(body, {
-    status,
-    headers: {
-      'content-type': 'text/plain; charset=utf-8',
-      'cache-control': 'no-store',
-      'x-content-type-options': 'nosniff',
-    },
-  });
-}
-
-/** Map the request path to an object key: strip exactly one leading slash. */
-function objectKeyFromPath(pathname) {
-  let key = pathname;
-  while (key.startsWith('/')) key = key.slice(1);
-  return decodeURIComponent(key);
-}
-
-function contentTypeForKey(key, httpMetadata) {
-  const declared = httpMetadata && httpMetadata.contentType;
-  if (declared) return declared;
-  const dot = key.lastIndexOf('.');
-  const ext = dot === -1 ? '' : key.slice(dot + 1).toLowerCase();
-  return CONTENT_TYPES[ext] || DEFAULT_CONTENT_TYPE;
-}
-
-function basenameOf(key) {
-  const slash = key.lastIndexOf('/');
-  return slash === -1 ? key : key.slice(slash + 1);
-}
-
-/** Stream an object out of R2 without buffering it in the Worker. */
-async function serveDownload(request, env) {
-  if (!env || !env.DOWNLOADS) {
-    return plainResponse(
-      'download service is not configured: the R2 binding "DOWNLOADS" is missing.',
-      503,
-    );
-  }
-
-  const url = new URL(request.url);
-  const key = objectKeyFromPath(url.pathname);
-  if (!key) {
-    return plainResponse('not found', 404);
-  }
-
-  const object = await env.DOWNLOADS.get(key);
-  if (object === null) {
-    return plainResponse('not found: ' + key, 404);
-  }
-
-  const headers = new Headers({
-    'content-type': contentTypeForKey(key, object.httpMetadata),
-    'content-length': String(object.size),
-    'content-disposition': 'attachment; filename="' + basenameOf(key) + '"',
-    'cache-control': 'public, max-age=3600',
-  });
-  if (object.httpEtag) {
-    headers.set('etag', object.httpEtag);
-  }
-
-  return new Response(object.body, { status: 200, headers });
-}
-
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -221,22 +151,17 @@ export default {
       return fetch(request);
     }
 
-    // 2) Android APK downloads, streamed from R2.
-    if (DOWNLOAD_HOSTS.has(host)) {
-      return serveDownload(request, env);
-    }
-
-    // 3) Personal homepage.
+    // 2) Personal homepage.
     if (PERSONAL_HOSTS.has(host)) {
       return htmlResponse(personalHomePage());
     }
 
-    // 4) Product landing page.
+    // 3) Product landing page.
     if (LANDING_HOSTS.has(host)) {
       return htmlResponse(projectLandingPage());
     }
 
-    // 5) 控制台主机（ops./merchant./admin.）：静态外壳走边缘缓存，其余原样回源。
+    // 4) 控制台主机（ops./merchant./admin.）：静态外壳走边缘缓存，其余原样回源。
     if (CONSOLE_CACHE_HOSTS.has(host) && isConsoleCacheableRequest(request, url)) {
       try {
         return await serveConsoleWithEdgeCache(request, ctx);
@@ -246,7 +171,7 @@ export default {
       }
     }
 
-    // 6) Every other host (food./food-admin./identity./
+    // 5) Every other host (food./food-admin./app./identity./
     //    payment./wallet./commerce./agent. ...) is served by the K3s cluster.
     //    Pass through untouched.
     return fetch(request);

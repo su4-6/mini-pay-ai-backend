@@ -352,6 +352,8 @@ public class SecurityConfiguration {
             @Value("${minipay.identity.android-client.redirect-uri}") String androidRedirectUri,
             @Value("${minipay.identity.merchant-bff-client.client-id}") String merchantBffClientId,
             @Value("${minipay.identity.merchant-bff-client.redirect-uri}") String merchantBffRedirectUri,
+            @Value("${minipay.identity.consumer-bff-client.client-id}") String consumerBffClientId,
+            @Value("${minipay.identity.consumer-bff-client.redirect-uri}") String consumerBffRedirectUri,
             @Value("${minipay.identity.internal-clients.payment-to-identity.client-id}") String paymentIdentityId,
             @Value("${minipay.identity.internal-clients.payment-to-identity.client-secret}") String paymentIdentitySecret,
             @Value("${minipay.identity.internal-clients.payment-to-wallet.client-id}") String paymentWalletId,
@@ -414,6 +416,8 @@ public class SecurityConfiguration {
                     androidClientId,
                     androidRedirectUri);
             registerMerchantBffClient(clients, jdbcTemplate, merchantBffClientId, merchantBffRedirectUri);
+            registerConsumerBffClient(
+                    clients, jdbcTemplate, consumerBffClientId, consumerBffRedirectUri);
             registerInternalClient(
                     clients, jdbcTemplate, passwordEncoder,
                     paymentIdentityId, paymentIdentitySecret,
@@ -895,6 +899,68 @@ public class SecurityConfiguration {
                         .build())
                 .build();
         replaceClient(clients, jdbcTemplate, existing, client);
+    }
+
+    /**
+     * 消费者 H5 BFF：与 Android 客户端同为公共客户端（PKCE，无 client_secret），
+     * 但 scope 只覆盖浏览器端 H5 实际使用的功能，绝不含 merchant/ops/admin 权限。
+     * 常量清单由 {@code ConsumerBffClientScopeTest} 断言，防止以后被误加越权 scope。
+     */
+    private static final List<String> CONSUMER_BFF_SCOPES = List.of(
+            "identity.profile.read",
+            "identity.profile.write",
+            "identity.payment-authorization.write",
+            "wallet.read",
+            "wallet.write",
+            "payment.transfer.read",
+            "payment.transfer.write",
+            "payment.recharge.read",
+            "payment.recharge.write",
+            "payment.withdrawal.read",
+            "payment.withdrawal.write",
+            "payment.bank-card.read",
+            "payment.order.read",
+            // 扫码付款要创建并确认支付单：payment-service 对 POST /api/v1/payment-orders/**
+            // 要求 consumer-api + payment.order.write。这里漏了它，线上表现为
+            // prepare 返回 403 INSUFFICIENT_SCOPE —— H5 的「扫码付款」整条链路走不完
+            //（2026-09-27 用真实商户收款码实测发现）。
+            "payment.order.write",
+            "payment.collection-code.read",
+            "agent.conversation");
+
+    static List<String> consumerBffScopes() {
+        return CONSUMER_BFF_SCOPES;
+    }
+
+    private static void registerConsumerBffClient(
+            RegisteredClientRepository clients,
+            JdbcTemplate jdbcTemplate,
+            String clientId,
+            String redirectUri) {
+        RegisteredClient existing = clients.findByClientId(clientId);
+        RegisteredClient.Builder builder = RegisteredClient.withId(
+                        existing == null ? UUID.randomUUID().toString() : existing.getId())
+                .clientId(clientId)
+                .clientName("MiniPay Consumer H5 BFF")
+                .clientAuthenticationMethod(ClientAuthenticationMethod.NONE)
+                .authorizationGrantType(AuthorizationGrantType.AUTHORIZATION_CODE)
+                .authorizationGrantType(AuthorizationGrantType.REFRESH_TOKEN)
+                .redirectUri(redirectUri)
+                .clientSettings(ClientSettings.builder()
+                        .requireProofKey(true)
+                        .requireAuthorizationConsent(false)
+                        .setting("minipay.token-audience", "consumer-api")
+                        .build())
+                .tokenSettings(TokenSettings.builder()
+                        .authorizationCodeTimeToLive(Duration.ofSeconds(60))
+                        .accessTokenTimeToLive(Duration.ofMinutes(10))
+                        .refreshTokenTimeToLive(Duration.ofDays(30))
+                        .reuseRefreshTokens(false)
+                        .build());
+        for (String scope : CONSUMER_BFF_SCOPES) {
+            builder.scope(scope);
+        }
+        replaceClient(clients, jdbcTemplate, existing, builder.build());
     }
 
     private static void replaceClient(

@@ -1,0 +1,21 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata: {name: consumer-web, namespace: minipay}
+spec:
+  parentRefs: [{name: minipay-gateway, sectionName: http}]
+  hostnames: [app.minipay.localhost]
+  rules:
+    # 消费者 H5 只与 consumer-bff 同源通信：access/refresh token 只存在 BFF 的
+    # Redis 会话里，浏览器只有 httpOnly 的 __Host-minipay-consumer Cookie。
+    #
+    # 这里不需要像 merchant/ops 那样把子路径前缀剥掉再转给 nginx：
+    # consumer-h5 是【独立主机 + 根路径】构建的（umi base = /），
+    # 文件就摊在容器站点根目录，$uri 能直接命中。
+    #
+    # 米灵的 AI 运行结果是 SSE（/api/v1/ai/runs/{runId}/events）。
+    # NGF 默认 proxy_read_timeout 是 60s，服务端按契约每 ≤20s 发一次心跳注释行，
+    # 因此不需要额外放宽超时；若以后去掉心跳，必须同时加 ClientSettingsPolicy。
+    - matches: [{path: {type: PathPrefix, value: /api}}]
+      backendRefs: [{name: consumer-bff, port: 8080}]
+    - matches: [{path: {type: PathPrefix, value: /}}]
+      backendRefs: [{name: consumer-web, port: 80}]

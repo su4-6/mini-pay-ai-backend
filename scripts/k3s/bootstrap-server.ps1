@@ -1,5 +1,5 @@
 # Generates every server-side file that `deploy/k3s/overlays/server` needs but that
-# is deliberately kept out of Git: runtime.env, the nine per-workload private env
+# is deliberately kept out of Git: runtime.env, the per-workload private env
 # files, the JWT signing key pair, and the image digest component.
 #
 # Why this exists
@@ -16,8 +16,8 @@
 # OAuth (issuer and client would hold different values).
 #
 #   shared across files:
-#     RABBITMQ_USERNAME / RABBITMQ_PASSWORD     6 workloads
-#     REDIS_PASSWORD                            5 workloads
+#     RABBITMQ_USERNAME / RABBITMQ_PASSWORD     middleware credentials shared by several workloads
+#     REDIS_PASSWORD                            shared by the Java services, the three BFFs and Miling
 #     YSHOP_MINIPAY_HMAC_SECRET                 commerce + yshop
 #     each *_CLIENT_SECRET                      identity + its counterpart
 #
@@ -341,6 +341,15 @@ Write-EnvFile (Join-Path $privateDirectory "management-bff.env") ([ordered]@{
 Write-EnvFile (Join-Path $privateDirectory "admin-bff.env") ([ordered]@{
     REDIS_PASSWORD            = $redisPassword
     ADMIN_OAUTH_CLIENT_SECRET = $oauth.ADMIN_OAUTH_CLIENT_SECRET
+})
+# Miling: the standalone service built on ai-agent-scaffold-lite, replacing agent-service.
+# It reuses the platform Redis. The model key is a third-party credential and is NOT
+# generated here: a placeholder is written and must be replaced by the deployer.
+# With MILING_MODEL_ENABLED=false the service must degrade gracefully, so the
+# placeholder never blocks the pod from starting (only real model calls fail).
+Write-EnvFile (Join-Path $privateDirectory "miling.env") ([ordered]@{
+    REDIS_PASSWORD       = $redisPassword
+    MILING_MODEL_API_KEY = "replace-with-real-model-api-key"
 })
 Write-EnvFile (Join-Path $privateDirectory "yshop.env") ([ordered]@{
     SPRING_DATASOURCE_DYNAMIC_DATASOURCE_MASTER_USERNAME = "yshop"

@@ -116,18 +116,21 @@ if (-not $SkipBuild) {
     }
     Ok 'Java 镜像完成'
 
-    Stage '构建 3 个前端静态镜像'
+    Stage '构建 4 个前端静态镜像'
     foreach ($web in @(
-            @{ name = 'merchant-web'; path = "$frontend/apps/merchant-web";           df = "$frontend/docker/k3s-web.Dockerfile"; dist = 'dist' },
-            @{ name = 'ops-web';      path = "$frontend/apps/ops-web";                df = "$frontend/docker/k3s-web.Dockerfile"; dist = 'dist' },
-            @{ name = 'admin-web';    path = "$frontend/apps/admin-web";              df = "$frontend/docker/k3s-web.Dockerfile"; dist = 'dist' }
+            @{ name = 'merchant-web'; app = 'merchant-web'; path = "$frontend/apps/merchant-web";           df = "$frontend/docker/k3s-web.Dockerfile"; dist = 'dist' },
+            @{ name = 'ops-web';      app = 'ops-web';      path = "$frontend/apps/ops-web";                df = "$frontend/docker/k3s-web.Dockerfile"; dist = 'dist' },
+            @{ name = 'admin-web';    app = 'admin-web';    path = "$frontend/apps/admin-web";              df = "$frontend/docker/k3s-web.Dockerfile"; dist = 'dist' },
+            # 消费者 H5：Dockerfile 是 COPY apps/${APP}/dist/，这里的目录名是 consumer-h5，
+            # 而镜像名是 consumer-web —— APP 必须单独给，照抄 name 会去 COPY 一个不存在的目录。
+            @{ name = 'consumer-web'; app = 'consumer-h5';  path = "$frontend/apps/consumer-h5";            df = "$frontend/docker/k3s-web.Dockerfile"; dist = 'dist' }
         )) {
         if (-not (Test-Path $web.path)) { Write-Host "  跳过（不存在）: $($web.name)" -ForegroundColor DarkGray; continue }
         Write-Host "  -> $($web.name)"
         Run 'pnpm' @('install', '--frozen-lockfile') $web.path
         Run 'pnpm' @('build') $web.path
         if (Test-Path $web.df) {
-            Run 'docker' @('build', '--file', $web.df, '--build-arg', "APP=$($web.name)", '--tag', "$Namespace/$($web.name):$Version", $frontend) $frontend
+            Run 'docker' @('build', '--file', $web.df, '--build-arg', "APP=$($web.app)", '--tag', "$Namespace/$($web.name):$Version", $frontend) $frontend
         } else {
             Write-Host "  仅构建产物（无 Dockerfile）: $($web.name)" -ForegroundColor Yellow
         }

@@ -29,6 +29,12 @@ spec:
       labels:
         app.kubernetes.io/name: maintenance-page
     spec:
+      # 镜像无关的隔离项照样开：不挂 SA token、默认 seccomp。
+      # （容器级三项见下方说明：这张页跑的是官方 nginx:1.27-alpine，master 以 root 起、
+      #   要写 /var/cache/nginx，所以 runAsNonRoot / readOnlyRootFilesystem 必须等换成
+      #   unprivileged 基础镜像才能开，check-config.ps1 里对它有明确豁免。）
+      automountServiceAccountToken: false
+      securityContext: {seccompProfile: {type: RuntimeDefault}}
       containers:
         - name: web
           image: suqihang/maintenance-page:0.1.1

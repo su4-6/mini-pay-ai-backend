@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: miling-service
+  namespace: minipay
+  labels: &labels
+    app.kubernetes.io/name: miling-service
+    app.kubernetes.io/part-of: minipay
+spec:
+  replicas: 1
+  selector: {matchLabels: {app.kubernetes.io/name: miling-service}}
+  template:
+    metadata: {labels: *labels}
+    spec:
+      automountServiceAccountToken: false
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, fsGroup: 10001, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: miling-service
+          # 米灵（AI 助手）新实现，来自 ai-agent-scaffold-lite 脚手架，取代原来的 agent-service。
+          # 资源按本节点实况（2026-09-27 上线实测）：agent-service 实测 280Mi、commerce-service 213Mi，
+          # 平台统一 limit 400Mi；米灵是 Spring AI 服务，metaspace 留 128m，故 request 192Mi / limit 448Mi。
+          image: suqihang/miling-service:0.1.0-k3s.3
+          imagePullPolicy: IfNotPresent
+          ports: [{name: http, containerPort: 8080, protocol: TCP}]
+          env:
+            # 上游只读工具地址；鉴权用调用者自己的 consumer token，不需要新的内部客户端。
+            - {name: MILING_WALLET_URL, value: http://wallet-service:8080}
+            - {name: MILING_PAYMENT_URL, value: http://payment-service:8080}
+            # 模型：OpenAI 兼容接口（2026-09-27 起用小米 MiMo，Key 由 MIMO_API_KEY 注入）。
+            # API Key 只经 miling-runtime Secret 注入，绝不进 Git。
+            # ⚠️ MILING_MODEL_ENABLED 必须显式打开：它的默认值是 false，
+            #    留给 false 会走"模型不可用"降级，表现为米灵完全不回话
+            #    —— agent-service 当年就是栽在这个默认值上（见 overlays/server 的变更 #55 注释）。
+            # ⚠️ MILING_MODEL_* 现在真的会驱动 Spring AI：脚手架补了
+            #    MilingRuntimeConfiguration.openAiCompatibleChatModel()，此前只有一个
+            #    ObjectProvider<ChatModel>，没人生产该 bean → 一律降级成"模型不可用"。
+            - {name: MILING_MODEL_ENABLED, value: "true"}
+            - {name: MILING_MODEL_BASE_URL, value: https://api.xiaomimimo.com/v1}
+            - {name: MILING_MODEL_NAME, value: mimo-v2.6-flash}
+            # limit 448Mi 下显式收紧堆与 metaspace，避免 OOMKilled（容器根文件系统只读）
+            - name: JAVA_OPTS
+              value: "-XX:MaxRAMPercentage=60 -XX:InitialRAMPercentage=20 -XX:+UseSerialGC -XX:MaxMetaspaceSize=128m -XX:+ExitOnOutOfMemoryError -Dfile.encoding=UTF-8 -Duser.timezone=Asia/Shanghai"
+          envFrom:
+            - configMapRef: {name: minipay-runtime}
+            - configMapRef: {name: minipay-environment}
+            - secretRef: {name: miling-runtime}
+          volumeMounts: [{name: tmp, mountPath: /tmp}]
+          startupProbe: {httpGet: {path: /actuator/health/liveness, port: http}, failureThreshold: 40, periodSeconds: 5}
+          # 就绪探针刻意指向【聚合健康】而不是 /actuator/health/readiness：
+          # 服务端把 redis 从 readiness 组里移除了（列了它，任何关掉该贡献者的环境都会
+          # 启动失败），于是 readiness 组只看进程自身。这里用聚合端点把 Redis 连通性重新
+          # 纳入就绪判定 —— 密码配错/Redis 不可达时 Pod 直接不 Ready，部署阶段就炸出来，
+          # 而不是"部署看似成功、每次对话都失败"。
+          # 存活探针仍走 liveness 组：Redis 故障只应该摘流量，不应该引发重启循环。
+          readinessProbe: {httpGet: {path: /actuator/health, port: http}, periodSeconds: 10, failureThreshold: 3}
+          livenessProbe: {httpGet: {path: /actuator/health/liveness, port: http}, periodSeconds: 15, failureThreshold: 3}
+          resources: {requests: {cpu: 100m, memory: 192Mi}, limits: {cpu: 750m, memory: 448Mi}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+      volumes: [{name: tmp, emptyDir: {sizeLimit: 128Mi}}]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: miling-service
+  namespace: minipay
+  labels:
+    app.kubernetes.io/name: miling-service
+    app.kubernetes.io/part-of: minipay
+spec: {type: ClusterIP, selector: {app.kubernetes.io/name: miling-service}, ports: [{name: http, port: 8080, targetPort: http}]}

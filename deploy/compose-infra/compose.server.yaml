@@ -39,6 +39,17 @@ services:
       - --table-open-cache=256
       - --tmp-table-size=16M
       - --max-heap-table-size=16M
+    # 外卖中间件从服务器面移出（C 端换成 H5 后外卖栈已整体下线）：
+    # 这个 MySQL 实例只为 yshop-server（K3s 里已 0 副本）存在，
+    # 一个完整 MySQL 进程在 3723 MiB 的机器上是纯浪费。
+    # 用 !override 覆盖 profiles，从而【只在服务器叠加文件里】排除它，
+    # 本地 `compose.yaml` 仍然照旧启动（不影响 scripts/k3s/infra.ps1 的服务数量校验）。
+    # 恢复外卖：删掉这两段 profiles 覆盖，并放回数据卷之后正常 up 即可（数据卷不删，数据保留）。
+    profiles: !override ["food-disabled"]
+
+  yshop-redis:
+    # 同上：只为已下线的外卖栈存在。
+    profiles: !override ["food-disabled"]
 
   # Seata 默认按宿主机总内存算 Xms/Xmx，会把 256m/512m 顶满，这里压到 128m/256m。
   seata-server:

@@ -26,6 +26,10 @@ spec:
         - name: payment-service
           image: suqihang/payment-service:0.1.0-k3s.1
           imagePullPolicy: IfNotPresent
+          # exec 形式的 ENTRYPOINT 固定了 -XX:MaxRAMPercentage=75.0，JAVA_OPTS 不会被展开
+          # （实测：同时给 JAVA_TOOL_OPTIONS=55 与命令行 75 时生效的是命令行）。
+          # 因此显式改用 shell 入口，把堆比例交给 minipay-runtime 的 JAVA_OPTS（见 overlays/server-lite）。
+          command: ["sh", "-c", "exec java ${JAVA_OPTS:--XX:MaxRAMPercentage=75.0} -jar /app/app.jar"]
           ports: [{name: http, containerPort: 8080, protocol: TCP}]
           env:
             - name: MYSQL_URL

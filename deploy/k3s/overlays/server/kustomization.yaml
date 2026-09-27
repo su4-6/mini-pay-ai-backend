@@ -30,6 +30,9 @@ secretGenerator:
   - {name: commerce-runtime, envs: [private/commerce.env]}
   - {name: agent-runtime, envs: [private/agent.env]}
   - {name: consumer-bff-runtime, envs: [private/consumer-bff.env]}
+  # 米灵（ai-agent-scaffold-lite 脚手架）的运行时密钥：
+  # 至少包含 REDIS 口令与 MILING_MODEL_API_KEY，不进 Git（与其它 private/*.env 同）。
+  - {name: miling-runtime, envs: [private/miling.env]}
   - {name: management-bff-runtime, envs: [private/management-bff.env]}
   - {name: admin-bff-runtime, envs: [private/admin-bff.env]}
   - {name: yshop-runtime, envs: [private/yshop.env]}
@@ -50,6 +53,30 @@ patches:
     patch: |-
       - {op: replace, path: /spec/replicas, value: 0}
   - target: {kind: Deployment, name: yshop-admin-web}
+    patch: |-
+      - {op: replace, path: /spec/replicas, value: 0}
+  # ---------------------------------------------------------------------------
+  # C 端从 Android App 换成消费者 H5，同时收敛内存占用。
+  # 节点只有 3723 MiB，米灵换成脚手架新服务后要给它留出空间，所以把只为
+  # App / 外卖存在的工作负载停掉。
+  #
+  # commerce-service（request 384Mi / limit 1Gi）：点餐外卖后端。外卖栈
+  # （yshop-server / yshop-food-h5 / yshop-admin-web）已经在上面的 patch 里缩到 0、
+  # food. 走维护页，H5 的 P0 范围也不含外卖 → 停掉它不影响任何在线功能。
+  # 恢复：删掉这个 patch，并
+  #   kubectl -n minipay scale deploy commerce-service --replicas=1
+  - target: {kind: Deployment, name: commerce-service}
+    patch: |-
+      - {op: replace, path: /spec/replicas, value: 0}
+  #
+  # agent-service（request 512Mi / limit 1280Mi）：原来的米灵实现，被
+  # miling-service 取代。
+  # ⚠️ 这条 patch 一 apply 就会立刻缩到 0（清单是"一次切换到位"的，不是分两步）。
+  #    想更保守：第一次 apply 前先注释掉这条，验证 H5 的米灵对话可用后再放开重跑。
+  #    今天 agent-service 的唯一消费者就是即将下线的 Android App，所以直接切换也是安全的。
+  # 恢复：删掉这个 patch，并
+  #   kubectl -n minipay scale deploy agent-service --replicas=1
+  - target: {kind: Deployment, name: agent-service}
     patch: |-
       - {op: replace, path: /spec/replicas, value: 0}
   # ---------------------------------------------------------------------------
@@ -102,6 +129,12 @@ patches:
   - target: {kind: HTTPRoute, name: admin-web}
     patch: |-
       - {op: replace, path: /spec/hostnames/0, value: admin.su46proj.site}
+      - {op: replace, path: /spec/parentRefs/0/sectionName, value: https}
+  # 消费者 H5 的入口：app.su46proj.site（取代原来的 APK 下载页面）。
+  # 通配证书 *.su46proj.site 已覆盖，只需 DNS 有这条记录。
+  - target: {kind: HTTPRoute, name: consumer-web}
+    patch: |-
+      - {op: replace, path: /spec/hostnames/0, value: app.su46proj.site}
       - {op: replace, path: /spec/parentRefs/0/sectionName, value: https}
   - target: {kind: HTTPRoute, name: yshop-food}
     patch: |-
@@ -199,6 +232,49 @@ patches:
       - op: replace
         path: /spec/template/spec/containers/0/image
         value: suqihang/merchant-web:0.1.0-k3s.9
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+  # 消费者 H5 与米灵同样是「节点本地导入镜像 + tag 引用」：新镜像还没有 digest，
+  # 推上去之后补进 overlays/server/private/digests 再删掉这两条 patch。
+  - target: {kind: Deployment, name: consumer-web}
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: suqihang/consumer-web:0.1.0-k3s.3
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+  - target: {kind: Deployment, name: miling-service}
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: suqihang/miling-service:0.1.0-k3s.3
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+  # ---------------------------------------------------------------------------
+  # consumer-bff / identity-service 也改成 tag + IfNotPresent（**2026-09-27 H5 上线实测**）。
+  #
+  # 原因同上：新镜像只在节点本地 containerd（`docker save | k3s ctr images import`），
+  # private/digests 里锁的还是旧 digest。⚠️ 另外踩过一个坑：`docker build` 默认带
+  # attestation manifest（manifest list），导入后 kubelet 报 "image can't be pulled"，
+  # 必须用 `docker build --provenance=false --sbom=false` 出单平台镜像。
+  #
+  # Docker Hub 能推之后：推一次、用 push-and-record-digests.ps1 记 digest、删掉这两条 patch。
+  - target: {kind: Deployment, name: consumer-bff}
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: suqihang/consumer-bff:0.1.0-k3s.13
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+  - target: {kind: Deployment, name: identity-service}
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: suqihang/identity-service:0.1.0-k3s.12
       - op: replace
         path: /spec/template/spec/containers/0/imagePullPolicy
         value: IfNotPresent

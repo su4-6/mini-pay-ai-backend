@@ -13,15 +13,48 @@ server:
 spring:
   application:
     name: consumer-bff
+  codec:
+    # AI message lists and wallet bill pages can be large; the SSE stream is never aggregated.
+    max-in-memory-size: 8MB
   data:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
   session:
+    timeout: ${CONSUMER_SESSION_TIMEOUT:30m}
+    # ⚠️ 这里必须与上面的 server.reactive.session.cookie.* 配对存在：
+    #    server.reactive.session.cookie.* 只作用于 Boot 的默认内存 WebSession；
+    #    线上有 spring-session-data-redis，真正生效的是 Spring Session，它只读 spring.session.cookie.*。
+    #    而 __Host- 前缀要求 Secure + Path=/ + 不带 Domain —— 少了 Secure 浏览器会直接拒收 Cookie，
+    #    表现就是"登录后立刻又是未登录"。WebTestClient 不校验浏览器 Cookie 规则，所以测试发现不了。
+    cookie:
+      name: ${SPRING_SESSION_COOKIE_NAME:__Host-minipay-consumer}
+      http-only: true
+      secure: ${SESSION_COOKIE_SECURE:true}
+      same-site: lax
+      path: /
     redis:
       namespace: minipay:session:consumer
       flush-mode: on_save
+
+minipay:
+  consumer-bff:
+    # 上游地址全部来自环境变量；localhost 只作为本地演示默认值。
+    identity-url: ${IDENTITY_INTERNAL_URL:http://localhost:8081}
+    wallet-url: ${WALLET_INTERNAL_URL:http://localhost:8083}
+    payment-url: ${PAYMENT_INTERNAL_URL:http://localhost:8082}
+    miling-url: ${MILING_INTERNAL_URL:http://localhost:8090}
+    # 公共客户端 + PKCE：BFF 独占 access/refresh token，浏览器只持有会话 Cookie。
+    oauth-client-id: ${CONSUMER_BFF_OAUTH_CLIENT_ID:minipay-consumer-bff}
+    oauth-redirect-uri: ${CONSUMER_BFF_OAUTH_REDIRECT_URI:http://localhost:8087/session/callback}
+
+logging:
+  level:
+    # Spring 的默认 HTTP 客户端日志会打印请求头与请求体；敏感字段由代码层保证不落库不落日志，
+    # 这里额外关闭该库的 DEBUG/TRACE 输出，避免 Authorization、Cookie 与支付密码进入日志文件。
+    org.springframework.web.reactive.function.client.ExchangeFunctions: WARN
+    reactor.netty.http.client: WARN
 
 management:
   endpoint:

@@ -18,6 +18,8 @@ spec:
         - name: management-bff
           image: suqihang/management-bff:0.1.0-k3s.4
           imagePullPolicy: IfNotPresent
+          # 见 consumer-bff 的说明：exec 形式的 ENTRYPOINT 让 JAVA_OPTS 失效，改用 shell 入口。
+          command: ["sh", "-c", "exec java ${JAVA_OPTS:--XX:MaxRAMPercentage=75.0} -jar /app/app.jar"]
           ports: [{name: http, containerPort: 8080, protocol: TCP}]
           env:
             - {name: SPRING_SESSION_COOKIE_NAME, value: minipay-management-local}

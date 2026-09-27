@@ -29,6 +29,9 @@ spec:
         - name: wallet-service
           image: suqihang/wallet-service:0.1.0-k3s.1
           imagePullPolicy: IfNotPresent
+          # 见 consumer-bff 的说明：exec 形式的 ENTRYPOINT 让 JAVA_OPTS 失效，改用 shell 入口
+          # 把堆比例交给 minipay-runtime 的 JAVA_OPTS（server-lite 调成 55%）。
+          command: ["sh", "-c", "exec java ${JAVA_OPTS:--XX:MaxRAMPercentage=75.0} -jar /app/app.jar"]
           ports:
             - name: http
               containerPort: 8080

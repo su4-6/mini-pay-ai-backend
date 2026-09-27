@@ -15,6 +15,9 @@ data:
   PAYMENT_INTERNAL_URL: http://payment-service:8080
   WALLET_INTERNAL_URL: http://wallet-service:8080
   AGENT_INTERNAL_URL: http://agent-service:8080
+  # 米灵（AI 助手）新实现，来自 ai-agent-scaffold-lite 脚手架。
+  # consumer-bff 用它代理 H5 的 /api/v1/ai/**。
+  MILING_INTERNAL_URL: http://miling-service:8080
   COMMERCE_INTERNAL_URL: http://commerce-service:8080
   MINIPAY_COMMERCE_INTERNAL_URL: http://commerce-service:8080
   YSHOP_INTERNAL_URL: http://yshop-server:48080

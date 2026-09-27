@@ -13,6 +13,8 @@ resources:
   - workloads/commerce.yaml
   - workloads/agent.yaml
   - workloads/consumer-bff.yaml
+  - workloads/consumer-web.yaml
+  - workloads/miling-service.yaml
   - workloads/management-bff.yaml
   - workloads/admin-bff.yaml
   - workloads/merchant-web.yaml
@@ -25,6 +27,7 @@ resources:
   - workloads/maintenance-page.yaml
   - routes/public-api-routes.yaml
   - routes/minipay-web-routes.yaml
+  - routes/consumer-routes.yaml
   - routes/yshop-routes.yaml
 
 # 统一放宽探针阈值。
