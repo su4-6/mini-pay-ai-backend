@@ -38,6 +38,14 @@ secretGenerator:
   - {name: yshop-runtime, envs: [private/yshop.env]}
 
 patches:
+  # Cloudflare 的 HTTP/2 回源曾出现：源站 access log 已返回 200，但边缘仍在
+  # 约 60 秒后给浏览器返回 520/525。服务器只有单副本 NGF 数据面；让源站
+  # 不再通过 ALPN 宣告 HTTP/2 后，Cloudflare 会自动回落到 HTTP/1.1，
+  # 浏览器到 Cloudflare 的 HTTP/2/HTTP/3 不受影响。
+  # 回滚：删除此 patch（NginxProxy 的 disableHTTP2 默认是 false）。
+  - target: {group: gateway.nginx.org, version: v1alpha2, kind: NginxProxy, name: minipay-gateway-proxy}
+    patch: |-
+      - {op: add, path: /spec/disableHTTP2, value: true}
   # ---------------------------------------------------------------------------
   # 外卖栈暂时下线（**变更 #47/#48**）：节点内存只有 3.7 GiB，yshop-server 单进程约 600 MiB。
   # 关掉后 food./food-admin. 由 maintenance-page 顶一张「维护中」说明页（不再 503）。
