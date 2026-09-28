@@ -588,6 +588,11 @@ class ConsumerApiIntegrationTest extends ConsumerBffIntegrationTest {
         login();
         String csrf = csrfToken();
 
+        PAYMENT.enqueue(json(200, "[]"));
+        withCookies(client.get().uri("/api/v1/transfers?limit=20"))
+                .exchange().expectStatus().isOk();
+        assertThat(takeRequest(PAYMENT).getPath()).isEqualTo("/api/v1/transfers?limit=20");
+
         WALLET.enqueue(json(200, "{\"items\":[],\"page\":1,\"size\":20,\"total\":0}"));
         withCookies(client.get().uri("/api/v1/transfers?counterpartyUserId=" + PAYEE_ID
                         + "&cursor=1&limit=20"))

@@ -950,9 +950,9 @@ public class ConsumerSessionService {
     }
 
     /**
-     * Transfer history. Payment Service exposes no transfer list, so the authoritative
-     * consumer-facing history is Wallet's per-counterparty transfer record feed and the BFF relays
-     * it while keeping a stable cursor/limit surface for the browser.
+     * The general transfer list is owned by Payment and is the source used by the H5 overview.
+     * Wallet still owns the richer per-counterparty ledger feed, so callers that explicitly pass a
+     * counterparty keep the existing filtered behavior without crossing either service's storage.
      */
     public Mono<UpstreamResponse> transferHistory(
             WebSession session,
@@ -960,11 +960,16 @@ public class ConsumerSessionService {
             String counterpartyUserId,
             String cursor,
             String limit) {
+        String requestedLimit = limit == null || limit.isBlank() ? "20" : limit;
         if (counterpartyUserId == null || counterpartyUserId.isBlank()) {
-            return Mono.error(new UpstreamProblemException(
-                    HttpStatus.BAD_REQUEST,
-                    "COUNTERPARTY_REQUIRED",
-                    "查询转账记录需要 counterpartyUserId"));
+            return upstream.call(
+                    session,
+                    exchange.getRequest(),
+                    HttpMethod.GET,
+                    "/api/v1/transfers",
+                    Map.of("limit", requestedLimit),
+                    null,
+                    null);
         }
         return upstream.call(
                 session,
@@ -974,7 +979,7 @@ public class ConsumerSessionService {
                 Map.of(
                         "counterpartyUserId", counterpartyUserId,
                         "page", cursor == null || cursor.isBlank() ? "1" : cursor,
-                        "size", limit == null || limit.isBlank() ? "20" : limit),
+                        "size", requestedLimit),
                 null,
                 null);
     }
