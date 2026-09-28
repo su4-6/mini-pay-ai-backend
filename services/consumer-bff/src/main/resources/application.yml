@@ -35,7 +35,8 @@ spring:
       same-site: lax
       path: /
     redis:
-      namespace: minipay:session:consumer
+      # v2 intentionally invalidates pre-bank-card-write sessions once during the H5 core release.
+      namespace: minipay:session:consumer:v2
       flush-mode: on_save
 
 minipay:

@@ -103,38 +103,6 @@ public class TransferProxyController {
                 .map(UpstreamResponses::toEntity);
     }
 
-    @PostMapping("/recharge-orders")
-    public Mono<ResponseEntity<String>> createRechargeOrder(
-            WebSession session,
-            ServerWebExchange exchange,
-            @RequestBody FundingOrderRequest request) {
-        return sessions.proxy(
-                        session,
-                        exchange,
-                        HttpMethod.POST,
-                        "/api/v1/recharge-orders",
-                        Map.of(),
-                        Map.of("bankCardId", request.bankCardId(), "amountCent", request.amountFen()),
-                        RequestIds.of(exchange))
-                .map(UpstreamResponses::toEntity);
-    }
-
-    @PostMapping("/withdrawal-orders")
-    public Mono<ResponseEntity<String>> createWithdrawalOrder(
-            WebSession session,
-            ServerWebExchange exchange,
-            @RequestBody FundingOrderRequest request) {
-        return sessions.proxy(
-                        session,
-                        exchange,
-                        HttpMethod.POST,
-                        "/api/v1/withdrawal-orders",
-                        Map.of(),
-                        Map.of("bankCardId", request.bankCardId(), "amountCent", request.amountFen()),
-                        RequestIds.of(exchange))
-                .map(UpstreamResponses::toEntity);
-    }
-
     @GetMapping("/funding-orders")
     public Mono<ResponseEntity<String>> fundingOrders(
             WebSession session,
@@ -166,6 +134,4 @@ public class TransferProxyController {
             @NotBlank @Pattern(regexp = "^\\d{6}$") String paymentPassword) {
     }
 
-    public record FundingOrderRequest(@NotBlank String bankCardId, @Min(1) long amountFen) {
-    }
 }

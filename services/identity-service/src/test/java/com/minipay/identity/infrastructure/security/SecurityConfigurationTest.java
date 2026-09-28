@@ -135,6 +135,7 @@ class SecurityConfigurationTest {
                 "payment.withdrawal.read",
                 "payment.withdrawal.write",
                 "payment.bank-card.read",
+                "payment.bank-card.write",
                 "payment.order.read",
                 // 扫码付款创建/确认支付单需要它（上游 POST /api/v1/payment-orders/** 的 scope）
                 "payment.order.write",
@@ -148,10 +149,7 @@ class SecurityConfigurationTest {
                 .noneMatch(scope -> scope.startsWith("merchant.portal.")
                         || scope.startsWith("ops.")
                         || scope.startsWith("admin.")
-                        || "commerce.use".equals(scope)
-                        // bank-card.write / order.write 之外的越权面仍必须为空；
-                        // payment.order.write 是扫码付款必需的（见上一条测试的注释）
-                        || "payment.bank-card.write".equals(scope));
+                        || "commerce.use".equals(scope));
     }
 
     private static org.springframework.security.core.Authentication token(

@@ -919,6 +919,7 @@ public class SecurityConfiguration {
             "payment.withdrawal.read",
             "payment.withdrawal.write",
             "payment.bank-card.read",
+            "payment.bank-card.write",
             "payment.order.read",
             // 扫码付款要创建并确认支付单：payment-service 对 POST /api/v1/payment-orders/**
             // 要求 consumer-api + payment.order.write。这里漏了它，线上表现为

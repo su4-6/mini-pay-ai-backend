@@ -8,6 +8,12 @@ import java.util.List;
 import java.util.regex.Pattern;
 import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.Test;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.buffer.DefaultDataBufferFactory;
+import org.springframework.http.MediaType;
+import org.springframework.http.client.MultipartBodyBuilder;
+import org.springframework.web.reactive.function.BodyInserters;
+import reactor.core.publisher.Flux;
 
 /**
  * End-to-end behaviour of the consumer H5 session and API proxy against stubbed upstreams.
@@ -25,6 +31,9 @@ class ConsumerApiIntegrationTest extends ConsumerBffIntegrationTest {
     private static final String RESOLUTION_ID = "0198f200-0000-7000-8000-0000000000d5";
     private static final String PAYMENT_ORDER_ID = "0198f200-0000-7000-8000-0000000000d6";
     private static final String PAYMENT_ORDER_NO = "PAY20260101000001";
+    private static final String CARD_ID = "0198f200-0000-7000-8000-0000000000c1";
+    private static final String RECHARGE_ID = "0198f200-0000-7000-8000-0000000000c2";
+    private static final String WITHDRAWAL_ID = "0198f200-0000-7000-8000-0000000000c3";
     private static final String MERCHANT_RESOLUTION_JSON =
             "{\"type\":\"MERCHANT_COLLECTION\",\"resolutionId\":\"" + RESOLUTION_ID + "\","
                     + "\"merchantId\":\"0198f200-0000-7000-8000-0000000000d7\","
@@ -416,6 +425,162 @@ class ConsumerApiIntegrationTest extends ConsumerBffIntegrationTest {
                 .exchange().expectStatus().isOk();
         assertThat(takeRequest(PAYMENT).getPath())
                 .isEqualTo("/api/v1/withdrawal-orders?page=1&size=20");
+    }
+
+    @Test
+    void profileOnboardingAndRealNameRefreshTheCredentialFreeSessionSummary() throws Exception {
+        login();
+        String csrf = csrfToken();
+
+        IDENTITY.enqueue(json(200, "{\"userId\":\"" + CONSUMER_ID + "\","
+                + "\"nickname\":\"新昵称\",\"miniPayNo\":\"MP10001\",\"version\":2}"));
+        withCookies(client.patch().uri("/api/v1/users/me")
+                        .header("Content-Type", "application/json")
+                        .header("X-CSRF-TOKEN", csrf))
+                .bodyValue("{\"nickname\":\"新昵称\",\"version\":1}")
+                .exchange()
+                .expectStatus().isOk();
+        RecordedRequest profile = takeRequest(IDENTITY);
+        assertThat(profile.getPath()).isEqualTo("/api/v1/users/me");
+        assertThat(profile.getMethod()).isEqualTo("PATCH");
+
+        withCookies(client.get().uri("/api/v1/session"))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.displayName").isEqualTo("新昵称");
+
+        IDENTITY.enqueue(json(200, "{\"userId\":\"" + CONSUMER_ID + "\","
+                + "\"nickname\":\"完成引导\",\"payPasswordSet\":true,"
+                + "\"onboardingCompleted\":true}"));
+        withCookies(client.put().uri("/api/v1/users/me/onboarding")
+                        .header("Content-Type", "application/json")
+                        .header("X-CSRF-TOKEN", csrf)
+                        .header("Idempotency-Key", "onboarding-request-0001"))
+                .bodyValue("{\"nickname\":\"完成引导\"}")
+                .exchange()
+                .expectStatus().isOk();
+        assertThat(takeRequest(IDENTITY).getPath()).isEqualTo("/api/v1/users/me/onboarding");
+
+        MultipartBodyBuilder multipart = new MultipartBodyBuilder();
+        multipart.part("legalName", "测试用户");
+        multipart.part("idNumber", "123456789012345678");
+        multipart.part("faceImage", new ByteArrayResource(new byte[] {
+            (byte) 0xff, (byte) 0xd8, (byte) 0xff, (byte) 0xd9
+        }) {
+            @Override
+            public String getFilename() {
+                return "face.jpg";
+            }
+        }).contentType(MediaType.IMAGE_JPEG);
+        IDENTITY.enqueue(json(201, "{\"verificationId\":\"" + INTENT_ID + "\","
+                + "\"status\":\"VERIFIED\",\"legalNameMasked\":\"测**户\"}"));
+        withCookies(client.post().uri("/api/v1/real-name-verifications")
+                        .header("X-CSRF-TOKEN", csrf)
+                        .header("Idempotency-Key", "real-name-request-0001"))
+                .body(BodyInserters.fromMultipartData(multipart.build()))
+                .exchange()
+                .expectStatus().isCreated();
+        RecordedRequest realName = takeRequest(IDENTITY);
+        assertThat(realName.getPath()).isEqualTo("/api/v1/real-name-verifications");
+        assertThat(realName.getHeader("Content-Type")).startsWith("multipart/form-data;boundary=");
+
+        withCookies(client.get().uri("/api/v1/session"))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.displayName").isEqualTo("完成引导")
+                .jsonPath("$.onboardingRequired").isEqualTo(false)
+                .jsonPath("$.realNameStatus").isEqualTo("VERIFIED")
+                .jsonPath("$.realNameVerified").isEqualTo(true);
+    }
+
+    @Test
+    void bankCardWritesAndFundingKeepThePaymentPasswordOutOfPaymentService() throws Exception {
+        login();
+        String csrf = csrfToken();
+
+        PAYMENT.enqueue(json(201, "{\"cardId\":\"" + CARD_ID + "\","
+                + "\"bankName\":\"演示银行\",\"maskedCardNo\":\"**** 1234\",\"status\":\"ACTIVE\"}"));
+        withCookies(client.post().uri("/api/v1/bank-cards")
+                        .header("Content-Type", "application/json")
+                        .header("X-CSRF-TOKEN", csrf))
+                .bodyValue("{\"holderName\":\"测试用户\",\"cardNumber\":"
+                        + "\"6222020202021234\",\"verificationCode\":\"123456\"}")
+                .exchange()
+                .expectStatus().isCreated();
+        assertThat(takeRequest(PAYMENT).getPath()).isEqualTo("/api/v1/bank-cards");
+
+        PAYMENT.enqueue(json(201, "{\"rechargeId\":\"" + RECHARGE_ID + "\","
+                + "\"amountCent\":8800,\"status\":\"PENDING_CONFIRMATION\"}"));
+        IDENTITY.enqueue(json(201, "{\"authorizationId\":\"" + INTENT_ID + "\","
+                + "\"paymentAuthToken\":\"recharge-token\"}"));
+        PAYMENT.enqueue(json(200, "{\"rechargeId\":\"" + RECHARGE_ID + "\","
+                + "\"amountCent\":8800,\"status\":\"SUCCEEDED\"}"));
+        withCookies(client.post().uri("/api/v1/recharge-orders")
+                        .header("Content-Type", "application/json")
+                        .header("X-CSRF-TOKEN", csrf)
+                        .header("Idempotency-Key", "recharge-request-0001"))
+                .bodyValue("{\"bankCardId\":\"" + CARD_ID
+                        + "\",\"amountFen\":8800,\"paymentPassword\":\"123456\"}")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.status").isEqualTo("SUCCEEDED");
+        RecordedRequest rechargeCreate = takeRequest(PAYMENT);
+        RecordedRequest rechargeAuthorize = takeRequest(IDENTITY);
+        RecordedRequest rechargeConfirm = takeRequest(PAYMENT);
+        assertThat(rechargeCreate.getPath()).isEqualTo("/api/v1/recharge-intents");
+        assertThat(body(rechargeAuthorize).path("subjectType").asText()).isEqualTo("RECHARGE_ORDER");
+        assertThat(body(rechargeAuthorize).path("payPassword").asText()).isEqualTo("123456");
+        assertThat(body(rechargeConfirm).toString()).doesNotContain("123456");
+        assertThat(body(rechargeConfirm).path("paymentAuthToken").asText())
+                .isEqualTo("recharge-token");
+
+        PAYMENT.enqueue(json(201, "{\"withdrawalId\":\"" + WITHDRAWAL_ID + "\","
+                + "\"amountCent\":3200,\"status\":\"PROCESSING\"}"));
+        IDENTITY.enqueue(json(201, "{\"authorizationId\":\"" + PAYMENT_ORDER_ID + "\","
+                + "\"paymentAuthToken\":\"withdrawal-token\"}"));
+        PAYMENT.enqueue(json(200, "{\"withdrawalId\":\"" + WITHDRAWAL_ID + "\","
+                + "\"amountCent\":3200,\"status\":\"SUCCEEDED\"}"));
+        withCookies(client.post().uri("/api/v1/withdrawal-orders")
+                        .header("Content-Type", "application/json")
+                        .header("X-CSRF-TOKEN", csrf)
+                        .header("Idempotency-Key", "withdraw-request-0001"))
+                .bodyValue("{\"bankCardId\":\"" + CARD_ID
+                        + "\",\"amountFen\":3200,\"paymentPassword\":\"654321\"}")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.status").isEqualTo("SUCCEEDED");
+        RecordedRequest withdrawalCreate = takeRequest(PAYMENT);
+        RecordedRequest withdrawalAuthorize = takeRequest(IDENTITY);
+        RecordedRequest withdrawalConfirm = takeRequest(PAYMENT);
+        assertThat(withdrawalCreate.getPath()).isEqualTo("/api/v1/withdrawal-orders");
+        assertThat(body(withdrawalAuthorize).path("subjectType").asText())
+                .isEqualTo("WITHDRAWAL_ORDER");
+        assertThat(body(withdrawalConfirm).toString()).doesNotContain("654321");
+        assertThat(body(withdrawalConfirm).path("paymentAuthToken").asText())
+                .isEqualTo("withdrawal-token");
+    }
+
+    @Test
+    void chunkedRealNameUploadIsRejectedWhenTheStreamingLimitIsExceeded() throws Exception {
+        login();
+        String csrf = csrfToken();
+        DefaultDataBufferFactory buffers = new DefaultDataBufferFactory();
+
+        withCookies(client.post().uri("/api/v1/real-name-verifications")
+                        .header("Content-Type", "multipart/form-data;boundary=qa-boundary")
+                        .header("X-CSRF-TOKEN", csrf)
+                        .header("Idempotency-Key", "real-name-too-large-0001"))
+                .body(BodyInserters.fromDataBuffers(Flux.just(
+                        buffers.wrap(new byte[800_000]),
+                        buffers.wrap(new byte[800_000]))))
+                .exchange()
+                .expectStatus().isEqualTo(413)
+                .expectBody()
+                .jsonPath("$.code").isEqualTo("FACE_IMAGE_TOO_LARGE");
     }
 
     @Test

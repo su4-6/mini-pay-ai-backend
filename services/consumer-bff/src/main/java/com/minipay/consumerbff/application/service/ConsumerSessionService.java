@@ -18,9 +18,13 @@ import com.minipay.consumerbff.domain.security.Pkce;
 import com.minipay.consumerbff.domain.session.ConsumerSession;
 import com.minipay.consumerbff.domain.session.ConsumerTokens;
 import com.minipay.consumerbff.domain.session.LoginChallenge;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.UnaryOperator;
+import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.server.ServerWebExchange;
@@ -232,6 +236,364 @@ public class ConsumerSessionService {
     public Flux<ServerSentEvent<String>> streamEvents(
             WebSession session, ServerWebExchange exchange, String targetPath) {
         return upstream.events(session, exchange.getRequest(), targetPath, null);
+    }
+
+    // ------------------------------------------------------ consumer profile
+
+    public Mono<UpstreamResponse> updateProfile(
+            WebSession webSession,
+            ServerWebExchange exchange,
+            String nickname,
+            long version) {
+        return upstream.call(
+                        webSession,
+                        exchange.getRequest(),
+                        HttpMethod.PATCH,
+                        "/api/v1/users/me",
+                        Map.of(),
+                        Map.of("nickname", nickname, "version", version),
+                        null)
+                .flatMap(response -> updateSessionWhenSuccessful(
+                        webSession,
+                        response,
+                        current -> new ConsumerSession(
+                                current.consumerId(),
+                                current.maskedPhone(),
+                                nickname,
+                                current.payPasswordSet(),
+                                current.onboardingRequired(),
+                                current.realNameStatus(),
+                                current.realNameVerified())));
+    }
+
+    public Mono<UpstreamResponse> completeOnboarding(
+            WebSession webSession,
+            ServerWebExchange exchange,
+            String nickname,
+            String idempotencyKey) {
+        return upstream.call(
+                        webSession,
+                        exchange.getRequest(),
+                        HttpMethod.PUT,
+                        "/api/v1/users/me/onboarding",
+                        Map.of(),
+                        Map.of("nickname", nickname),
+                        idempotencyKey)
+                .flatMap(response -> updateSessionWhenSuccessful(
+                        webSession,
+                        response,
+                        current -> new ConsumerSession(
+                                current.consumerId(),
+                                current.maskedPhone(),
+                                nickname,
+                                current.payPasswordSet(),
+                                false,
+                                current.realNameStatus(),
+                                current.realNameVerified())));
+    }
+
+    public Mono<UpstreamResponse> submitRealName(
+            WebSession webSession,
+            ServerWebExchange exchange,
+            MediaType contentType,
+            Flux<DataBuffer> body,
+            String idempotencyKey) {
+        return upstream.multipart(
+                        webSession,
+                        exchange.getRequest(),
+                        "/api/v1/real-name-verifications",
+                        contentType,
+                        body,
+                        idempotencyKey)
+                .flatMap(response -> {
+                    if (!response.successful()) {
+                        return Mono.just(response);
+                    }
+                    String status = firstText(parse(response), "status");
+                    String normalized = status == null ? "PENDING" : status;
+                    return updateSessionWhenSuccessful(
+                            webSession,
+                            response,
+                            current -> new ConsumerSession(
+                                    current.consumerId(),
+                                    current.maskedPhone(),
+                                    current.displayName(),
+                                    current.payPasswordSet(),
+                                    current.onboardingRequired(),
+                                    normalized,
+                                    "VERIFIED".equals(normalized)));
+                });
+    }
+
+    public Mono<UpstreamResponse> confirmPhoneChange(
+            WebSession webSession,
+            ServerWebExchange exchange,
+            String mobile,
+            String challengeId,
+            String code,
+            String idempotencyKey) {
+        return upstream.call(
+                        webSession,
+                        exchange.getRequest(),
+                        HttpMethod.PUT,
+                        "/api/v1/users/me/phone",
+                        Map.of(),
+                        Map.of("challengeId", challengeId, "code", code),
+                        idempotencyKey)
+                .flatMap(response -> updateSessionWhenSuccessful(
+                        webSession,
+                        response,
+                        current -> new ConsumerSession(
+                                current.consumerId(),
+                                MobileMasking.mask(mobile),
+                                current.displayName(),
+                                current.payPasswordSet(),
+                                current.onboardingRequired(),
+                                current.realNameStatus(),
+                                current.realNameVerified())));
+    }
+
+    public Mono<UpstreamResponse> requestPaymentPasswordChange(
+            WebSession webSession,
+            ServerWebExchange exchange,
+            String mobile,
+            String idempotencyKey) {
+        return session(webSession).loadDeviceId()
+                .switchIfEmpty(Mono.error(deviceBindingRequired()))
+                .flatMap(deviceId -> upstream.call(
+                        webSession,
+                        exchange.getRequest(),
+                        HttpMethod.POST,
+                        "/api/v1/users/me/payment-password-change-challenges",
+                        Map.of(),
+                        Map.of("mobile", mobile, "deviceId", deviceId),
+                        idempotencyKey));
+    }
+
+    public Mono<UpstreamResponse> verifyPaymentPasswordChange(
+            WebSession webSession,
+            ServerWebExchange exchange,
+            String challengeId,
+            String code,
+            String idempotencyKey) {
+        return session(webSession).loadDeviceId()
+                .switchIfEmpty(Mono.error(deviceBindingRequired()))
+                .flatMap(deviceId -> upstream.call(
+                        webSession,
+                        exchange.getRequest(),
+                        HttpMethod.POST,
+                        "/api/v1/users/me/payment-password-change-challenges/"
+                                + challengeId + "/verifications",
+                        Map.of(),
+                        Map.of("code", code, "deviceId", deviceId),
+                        idempotencyKey));
+    }
+
+    public Mono<UpstreamResponse> changePaymentPassword(
+            WebSession webSession,
+            ServerWebExchange exchange,
+            String verificationToken,
+            String newPassword,
+            String idempotencyKey) {
+        SessionTokenStore sessions = session(webSession);
+        return sessions.loadDeviceId()
+                .switchIfEmpty(Mono.error(deviceBindingRequired()))
+                .flatMap(deviceId -> upstream.call(
+                        webSession,
+                        exchange.getRequest(),
+                        HttpMethod.POST,
+                        "/api/v1/users/me/payment-password-changes",
+                        Map.of(),
+                        Map.of(
+                                "verificationToken", verificationToken,
+                                "newPassword", newPassword,
+                                "deviceId", deviceId),
+                        idempotencyKey))
+                .flatMap(response -> {
+                    if (!response.successful()) {
+                        return Mono.just(response);
+                    }
+                    return refreshOnce(sessions, requestIdOf(exchange))
+                            .onErrorResume(ignored -> Mono.empty())
+                            .then(updateSessionWhenSuccessful(
+                                    webSession,
+                                    response,
+                                    current -> new ConsumerSession(
+                                            current.consumerId(),
+                                            current.maskedPhone(),
+                                            current.displayName(),
+                                            true,
+                                            current.onboardingRequired(),
+                                            current.realNameStatus(),
+                                            current.realNameVerified())));
+                });
+    }
+
+    private Mono<UpstreamResponse> updateSessionWhenSuccessful(
+            WebSession webSession,
+            UpstreamResponse response,
+            UnaryOperator<ConsumerSession> update) {
+        if (!response.successful()) {
+            return Mono.just(response);
+        }
+        SessionTokenStore sessions = session(webSession);
+        return sessions.loadConsumerSession()
+                .flatMap(current -> sessions.storeConsumerSession(update.apply(current)))
+                .thenReturn(response);
+    }
+
+    private static UpstreamProblemException deviceBindingRequired() {
+        return new UpstreamProblemException(
+                HttpStatus.CONFLICT,
+                "DEVICE_BINDING_REQUIRED",
+                "请重新登录后再进行安全操作");
+    }
+
+    // --------------------------------------------------------- bank funding
+
+    public Mono<UpstreamResponse> queryBankBalance(
+            WebSession webSession,
+            ServerWebExchange exchange,
+            String cardId,
+            String paymentPassword,
+            String rootIdempotencyKey) {
+        SessionTokenStore sessions = session(webSession);
+        return sessions.loadDeviceId()
+                .switchIfEmpty(Mono.error(deviceBindingRequired()))
+                .flatMap(deviceId -> tokenFor(sessions, requestIdOf(exchange))
+                        .flatMap(accessToken -> identityConsumer.issuePaymentAuthorization(
+                                accessToken,
+                                operationKey(rootIdempotencyKey, "authorize"),
+                                "BANK_CARD_BALANCE_QUERY",
+                                cardId,
+                                0,
+                                deviceId,
+                                paymentPassword,
+                                requestIdOf(exchange))))
+                .flatMap(authorization -> upstream.call(
+                        webSession,
+                        exchange.getRequest(),
+                        HttpMethod.POST,
+                        "/api/v1/bank-cards/" + cardId + "/balance-queries",
+                        Map.of(),
+                        Map.of("paymentAuthToken", authorization.paymentAuthToken()),
+                        operationKey(rootIdempotencyKey, "query")));
+    }
+
+    public Mono<UpstreamResponse> recharge(
+            WebSession webSession,
+            ServerWebExchange exchange,
+            String bankCardId,
+            long amountFen,
+            String paymentPassword,
+            String rootIdempotencyKey) {
+        return prepareAuthorizeAndConfirmFunding(
+                webSession,
+                exchange,
+                bankCardId,
+                amountFen,
+                paymentPassword,
+                rootIdempotencyKey,
+                true);
+    }
+
+    public Mono<UpstreamResponse> withdraw(
+            WebSession webSession,
+            ServerWebExchange exchange,
+            String bankCardId,
+            long amountFen,
+            String paymentPassword,
+            String rootIdempotencyKey) {
+        return prepareAuthorizeAndConfirmFunding(
+                webSession,
+                exchange,
+                bankCardId,
+                amountFen,
+                paymentPassword,
+                rootIdempotencyKey,
+                false);
+    }
+
+    private Mono<UpstreamResponse> prepareAuthorizeAndConfirmFunding(
+            WebSession webSession,
+            ServerWebExchange exchange,
+            String bankCardId,
+            long amountFen,
+            String paymentPassword,
+            String rootIdempotencyKey,
+            boolean recharge) {
+        if (amountFen < 1 || amountFen > 1_000_000) {
+            return Mono.error(new UpstreamProblemException(
+                    HttpStatus.BAD_REQUEST,
+                    "FUNDING_AMOUNT_INVALID",
+                    "金额必须在 0.01 元到 10000 元之间"));
+        }
+        String createPath = recharge ? "/api/v1/recharge-intents" : "/api/v1/withdrawal-orders";
+        return upstream.call(
+                        webSession,
+                        exchange.getRequest(),
+                        HttpMethod.POST,
+                        createPath,
+                        Map.of(),
+                        Map.of("bankCardId", bankCardId, "amountCent", amountFen),
+                        operationKey(rootIdempotencyKey, "create"))
+                .flatMap(created -> {
+                    if (!created.successful()) {
+                        throw translate(created, recharge
+                                ? "RECHARGE_PREPARE_FAILED"
+                                : "WITHDRAWAL_PREPARE_FAILED");
+                    }
+                    Map<String, Object> document = parse(created);
+                    String orderId = firstText(
+                            document, recharge ? "rechargeId" : "withdrawalId");
+                    if (orderId == null) {
+                        throw new UpstreamProblemException(
+                                HttpStatus.BAD_GATEWAY,
+                                "FUNDING_ORDER_INVALID",
+                                "上游未返回资金订单标识");
+                    }
+                    String status = firstText(document, "status");
+                    String confirmationStatus = recharge ? "PENDING_CONFIRMATION" : "PROCESSING";
+                    if (status != null && !confirmationStatus.equals(status)) {
+                        return Mono.just(created);
+                    }
+                    SessionTokenStore sessions = session(webSession);
+                    return sessions.loadDeviceId()
+                            .switchIfEmpty(Mono.error(deviceBindingRequired()))
+                            .flatMap(deviceId -> tokenFor(sessions, requestIdOf(exchange))
+                                    .flatMap(accessToken -> identityConsumer.issuePaymentAuthorization(
+                                            accessToken,
+                                            operationKey(rootIdempotencyKey, "authorize"),
+                                            recharge ? "RECHARGE_ORDER" : "WITHDRAWAL_ORDER",
+                                            orderId,
+                                            amountFen,
+                                            deviceId,
+                                            paymentPassword,
+                                            requestIdOf(exchange))))
+                            .flatMap(authorization -> upstream.call(
+                                    webSession,
+                                    exchange.getRequest(),
+                                    HttpMethod.POST,
+                                    recharge
+                                            ? "/api/v1/recharge-intents/" + orderId + "/confirm"
+                                            : "/api/v1/withdrawal-orders/" + orderId + "/confirm",
+                                    Map.of(),
+                                    Map.of("paymentAuthToken", authorization.paymentAuthToken()),
+                                    operationKey(rootIdempotencyKey, "confirm")));
+                });
+    }
+
+    private static String operationKey(String root, String operation) {
+        return UUID.nameUUIDFromBytes(
+                        (root + ":" + operation).getBytes(StandardCharsets.UTF_8))
+                .toString();
+    }
+
+    private static String requestIdOf(ServerWebExchange exchange) {
+        String requestId = exchange.getRequest().getHeaders().getFirst("X-Request-Id");
+        return requestId == null || requestId.isBlank()
+                ? UUID.randomUUID().toString()
+                : requestId;
     }
 
     // ------------------------------------------------------- sandbox transfers

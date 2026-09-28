@@ -12,7 +12,7 @@ MiniPay AI 是可演进 MVP，不以服务数量作为成熟度指标。架构�
 
 系统采用 Monorepo 管理多个独立部署服务。支付与外卖保持独立领域；钱包从支付编排中拆出，是为了让资金所有权单一，并满足跨分片 TCC 的硬约束。
 
-> **当前目标范围**：代码库在既有身份、支付、钱包、BFF 与社交聊天能力之上建设 Android 沙箱 AI 智能体。`commerce-service` 已参与 Reactor 与 Compose，作为沙箱外卖的数据所有者；外卖与支付通过 Saga + Outbox/Inbox 协作。详细设计见 `docs/MiniPay-AI-Agent-系统分析与设计-v1.0.md`。
+> **当前线上范围**：Consumer H5 通过 Consumer BFF 使用身份、钱包、支付与米灵能力。资源受限的 K3s 环境不启用 Android、外卖、社交、群聊和语音工作负载；`commerce-service` 等保留为可选源码，不进入本期部署。
 
 ## 2. 系统视图
 
@@ -150,6 +150,10 @@ bootstrap ──> all layers for wiring only
 - Access Token 为短时 RS256 JWT；每个资源服务校验 `iss`、`aud`、`exp`、`scope`。
 - Refresh Token 为轮换的不透明令牌，数据库只保存摘要，并检测复用。
 - Web 使用 Consumer/Management 两个 BFF 信任域；浏览器只持有 HttpOnly/Secure/SameSite Cookie。
+- Consumer H5 的 Access Token、Refresh Token、服务端设备标识及一次性支付授权令牌只保留在 Consumer BFF/Identity 信任边界内，不返回浏览器。资料、首次引导、实名、手机号、支付密码、银行卡及充值提现统一走同源 `/api/v1`。
+- Consumer BFF 对实名 JPEG（最大 1 MB）使用受限 multipart 流式转发，不落盘且不重放；资料、实名、手机号和支付密码变更成功后刷新服务端会话摘要。
+- 银行卡余额查询、充值和提现由 Consumer BFF 编排：先在 Payment 创建意图或订单，再把支付密码仅交给 Identity 换取绑定订单、金额、设备的单次授权，最后由 BFF 向 Payment 确认。浏览器和 Payment 均不接收支付密码。
+- Consumer OAuth 客户端只新增银行卡写入所需的 `payment.bank-card.write`；会话命名空间升级时旧会话一次性失效，以确保重新签发的访问令牌包含新权限。
 - Android 使用 Authorization Code + PKCE，Refresh Token 放入系统安全存储。
 - 内部服务使用 Client Credentials；用户 Token 与服务 Token 不互相替代。
 - 支付密码校验独立于 OAuth，生成 60 秒单次 `paymentAuthToken`，绑定用户、意图、金额和设备。

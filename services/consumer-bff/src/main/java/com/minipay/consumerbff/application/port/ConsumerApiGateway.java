@@ -2,6 +2,7 @@ package com.minipay.consumerbff.application.port;
 
 import java.util.Map;
 import org.springframework.http.HttpMethod;
+import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.http.server.reactive.ServerHttpRequest;
@@ -32,6 +33,18 @@ public interface ConsumerApiGateway {
     /** Same-user read-only relay that forwards the exact incoming path, query and body. */
     Mono<UpstreamResponse> relay(
             WebSession session, ServerHttpRequest inbound, HttpMethod method, String targetPrefix);
+
+    /**
+     * Streams a browser multipart request to an authenticated upstream without exposing the access
+     * token to JavaScript or buffering sensitive identity images in application code.
+     */
+    Mono<UpstreamResponse> multipart(
+            WebSession session,
+            ServerHttpRequest inbound,
+            String path,
+            MediaType contentType,
+            Flux<DataBuffer> body,
+            String idempotencyKey);
 
     /**
      * Server-sent-event relay for AI runs. Events are returned decoded so the caller re-encodes them

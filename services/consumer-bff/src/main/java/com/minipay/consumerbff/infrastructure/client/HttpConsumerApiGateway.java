@@ -11,11 +11,13 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.http.server.reactive.ServerHttpRequest;
+import org.springframework.web.reactive.function.BodyInserters;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.server.WebSession;
@@ -94,11 +96,7 @@ public class HttpConsumerApiGateway implements ConsumerApiGateway {
                 })
                 .onErrorMap(org.springframework.web.reactive.function.client
                                 .WebClientRequestException.class,
-                        exception -> new com.minipay.consumerbff.application.error
-                                .UpstreamProblemException(
-                                org.springframework.http.HttpStatus.BAD_GATEWAY,
-                                "UPSTREAM_SERVICE_UNAVAILABLE",
-                                null));
+                        HttpConsumerApiGateway::translateRequestFailure);
     }
 
     @Override
@@ -111,6 +109,29 @@ public class HttpConsumerApiGateway implements ConsumerApiGateway {
                 ? inbound.getURI().getRawPath()
                 : targetPrefix + inbound.getURI().getRawPath().substring("/api/v1".length());
         return call(session, inbound, method, path, Map.of(), null, null);
+    }
+
+    @Override
+    public Mono<UpstreamResponse> multipart(
+            WebSession session,
+            ServerHttpRequest inbound,
+            String path,
+            MediaType contentType,
+            Flux<DataBuffer> body,
+            String idempotencyKey) {
+        SessionTokenStore sessions = sessionStore(session);
+        String requestId = requestIdOf(inbound);
+        WebClient client = clientFor(path);
+        // The request body is a one-shot stream so a face image is never aggregated or written by
+        // the BFF. A 401 therefore invalidates the session instead of replaying sensitive bytes.
+        return exchangeMultipartWithToken(
+                        sessions, client, path, contentType, body, idempotencyKey, requestId)
+                .flatMap(exchanged -> exchanged.unauthorized()
+                        ? sessions.invalidate().then(Mono.error(SessionRequiredException.expired()))
+                        : Mono.just(toUpstreamResponse(exchanged)))
+                .onErrorMap(org.springframework.web.reactive.function.client
+                                .WebClientRequestException.class,
+                        HttpConsumerApiGateway::translateRequestFailure);
     }
 
     @Override
@@ -185,6 +206,31 @@ public class HttpConsumerApiGateway implements ConsumerApiGateway {
                         .exchangeToMono(HttpConsumerApiGateway::readExchange));
     }
 
+    private Mono<UpstreamExchange> exchangeMultipartWithToken(
+            SessionTokenStore sessions,
+            WebClient client,
+            String uri,
+            MediaType contentType,
+            Flux<DataBuffer> body,
+            String idempotencyKey,
+            String requestId) {
+        Mono<ConsumerTokens> tokens = sessions.loadTokens()
+                .filter(ConsumerTokens::hasAccessToken)
+                .switchIfEmpty(Mono.error(SessionRequiredException.expired()));
+        return tokens.flatMap(current -> client.post()
+                .uri(uri)
+                .headers(headers -> {
+                    if (current.hasAccessToken()) {
+                        headers.setBearerAuth(current.accessToken());
+                    }
+                    headers.set("X-Request-Id", requestId);
+                    headers.set("Idempotency-Key", idempotencyKey);
+                    headers.setContentType(contentType);
+                })
+                .body(BodyInserters.fromDataBuffers(body))
+                .exchangeToMono(HttpConsumerApiGateway::readExchange));
+    }
+
     /** Status, content type and body of one upstream exchange, captured while the body is readable. */
     private record UpstreamExchange(int status, String contentType, String body) {
 
@@ -229,6 +275,7 @@ public class HttpConsumerApiGateway implements ConsumerApiGateway {
         if (path.startsWith("/oauth2/")
                 || path.startsWith("/api/v1/auth/")
                 || path.startsWith("/api/v1/users")
+                || path.startsWith("/api/v1/real-name-verifications")
                 || path.startsWith("/api/v1/transfer-recipients")
                 || path.startsWith("/api/v1/payment-authorizations")
                 || path.startsWith("/api/v1/friends")
@@ -272,6 +319,21 @@ public class HttpConsumerApiGateway implements ConsumerApiGateway {
     private static UpstreamResponse toUpstreamResponse(UpstreamExchange exchange) {
         return new UpstreamResponse(
                 exchange.status(), exchange.contentType(), exchange.body(), Instant.now());
+    }
+
+    private static Throwable translateRequestFailure(Throwable exception) {
+        Throwable current = exception;
+        while (current != null) {
+            if (current instanceof com.minipay.consumerbff.application.error
+                    .UpstreamProblemException problem) {
+                return problem;
+            }
+            current = current.getCause();
+        }
+        return new com.minipay.consumerbff.application.error.UpstreamProblemException(
+                org.springframework.http.HttpStatus.BAD_GATEWAY,
+                "UPSTREAM_SERVICE_UNAVAILABLE",
+                null);
     }
 
     static String requestIdOf(ServerHttpRequest request) {
