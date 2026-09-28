@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>MiniPay AI · 数字支付 / 钱包 / 外卖一体化演示平台</title>
-<meta name="description" content="MiniPay AI 是一个数字支付、钱包与外卖一体化的演示平台：OAuth2 + PKCE 统一认证、复式账本钱包、支付编排与对账、外卖配送链路与 AI 智能助手，全部在线可体验。">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23131418'/%3E%3Cpath d='M18 18h9l5 10 5-10h9v28h-8V31l-6 11-6-11v15h-8z' fill='%23fff'/%3E%3C/svg%3E">
+<title>MiniPay AI · 消费者 H5 数字钱包与智能支付演示平台</title>
+<meta name="description" content="MiniPay AI 是一个以消费者 H5 为核心的数字钱包与智能支付演示平台：统一认证、复式账本、收付款、转账、银行卡、充值提现与米灵助手均可在线体验。">
 <meta name="theme-color" content="#faf9f7">
 <meta name="robots" content="index, follow">
 <style>
@@ -382,11 +383,11 @@ td.sys{color:var(--ink);font-weight:600;white-space:nowrap}
   <section class="hero col">
     <p class="status-pill"><i aria-hidden="true"></i>在线演示环境 · 可自由体验</p>
     <h1>MiniPay AI</h1>
-    <p class="lede">数字支付 / 钱包 / 外卖一体化演示平台。统一身份认证、带复式账本的钱包、支付渠道编排与对账、外卖下单到配送的完整链路，跑在同一套 K3s 私有集群上，另外带一个只能调用白名单工具的 AI 助手。</p>
+    <p class="lede">以消费者 H5 为核心的数字钱包与智能支付演示平台。统一身份认证、复式账本、收付款、转账、银行卡、充值提现和米灵助手运行在同一套 K3s 私有集群中，资金操作由服务端权威确认。</p>
     <div class="acts">
-      <a class="btn solid" href="https://admin.su46proj.site/" target="_blank" rel="noopener">进入管理端<span class="arrow" aria-hidden="true">↗</span></a>
+      <a class="btn solid" href="https://app.su46proj.site/" target="_blank" rel="noopener">打开消费者 H5<span class="arrow" aria-hidden="true">↗</span></a>
       <a class="btn" href="https://ops.su46proj.site/" target="_blank" rel="noopener">进入运营端</a>
-      <a class="btn" href="https://app.su46proj.site/" target="_blank" rel="noopener">打开消费者 H5</a>
+      <a class="btn" href="https://admin.su46proj.site/" target="_blank" rel="noopener">进入管理端</a>
     </div>
     <div class="toptags">
       <span class="chip">OAuth2 + PKCE</span>
@@ -396,7 +397,7 @@ td.sys{color:var(--ink);font-weight:600;white-space:nowrap}
       <span class="chip">消费者 H5</span>
     </div>
     <div class="factbar">
-      <div class="f"><p class="k">模块入口</p><p class="v">6 个<small>运营端 / 商户端 / 管理端 / 消费者 H5 / 外卖 H5 / 外卖后台</small></p></div>
+      <div class="f"><p class="k">Web 入口</p><p class="v">4 个<small>消费者 H5 / 运营端 / 商户端 / 管理端</small></p></div>
       <div class="f"><p class="k">认证方式</p><p class="v">OAuth2 + PKCE<small>图形验证码，手机号哈希存储</small></p></div>
       <div class="f"><p class="k">账务模型</p><p class="v">复式记账<small>金额以人民币分的整数存储</small></p></div>
       <div class="f"><p class="k">部署形态</p><p class="v">单套 K3s 集群<small>Cloudflare 边缘接入与回源</small></p></div>
@@ -406,8 +407,8 @@ td.sys{color:var(--ink);font-weight:600;white-space:nowrap}
   <section id="caps" class="wide">
     <div class="sec-head">
       <p class="eyebrow"><span class="num">01</span><span class="rule" aria-hidden="true"></span><span class="lbl">核心能力</span></p>
-      <h2>六个能真的点开、跑起来的模块</h2>
-      <p class="sub">下面每一项都在演示环境里真实运行，登录对应控制台就能看到数据流转，不是示意图。</p>
+      <h2>围绕消费者 H5 的六项核心能力</h2>
+      <p class="sub">从登录、钱包到资金确认与智能助手，均由真实沙箱接口提供，不是静态示意图。</p>
     </div>
     <div class="grid g3">
       <article class="cell-card">
@@ -430,9 +431,9 @@ td.sys{color:var(--ink);font-weight:600;white-space:nowrap}
       </article>
       <article class="cell-card">
         <p class="no">04</p>
-        <h3>外卖业务 下单 · 支付 · 配送</h3>
-        <p>覆盖门店与菜品、下单、支付到配送的完整链路。外卖和支付是两个独立服务，各自持有自己的数据，通过事件与状态机对齐，外卖不会去直接改支付状态。</p>
-        <div class="chips"><span class="chip">门店菜品</span><span class="chip">下单</span><span class="chip">钱包支付</span><span class="chip">配送调度</span></div>
+        <h3>消费者资金能力</h3>
+        <p>消费者 H5 提供收款、付款、扫码、转账、银行卡、充值和提现入口。资金操作先由服务端创建意图，再用支付密码换取一次性授权并确认，页面不会持有支付授权令牌。</p>
+        <div class="chips"><span class="chip">收付款</span><span class="chip">转账</span><span class="chip">银行卡</span><span class="chip">充值提现</span></div>
       </article>
       <article class="cell-card">
         <p class="no">05</p>
@@ -442,9 +443,9 @@ td.sys{color:var(--ink);font-weight:600;white-space:nowrap}
       </article>
       <article class="cell-card">
         <p class="no">06</p>
-        <h3>多端入口</h3>
-        <p>运营端、商户端、管理端和外卖后台四套控制台，加上外卖 H5 与消费者 H5，分别对应平台方、商户方和消费者三个视角，看的是同一份数据。消费者端已由 H5 取代原来的 Android App。</p>
-        <div class="chips"><span class="chip">React</span><span class="chip">umi</span><span class="chip">响应式</span><span class="chip">消费者 H5</span></div>
+        <h3>H5 与角色控制台</h3>
+        <p>消费者使用移动端优先的响应式 H5；运营端、商户端和管理端按角色提供各自的工作台。四个入口处于同一沙箱环境，但账号、权限和可见数据严格分开。</p>
+        <div class="chips"><span class="chip">React</span><span class="chip">umi</span><span class="chip">响应式 H5</span><span class="chip">角色权限</span></div>
       </article>
     </div>
   </section>
@@ -458,7 +459,7 @@ td.sys{color:var(--ink);font-weight:600;white-space:nowrap}
     <div class="ladder">
       <div class="rung">
         <p class="lname">边缘接入<span>CLOUDFLARE</span></p>
-        <p class="ldesc">Cloudflare 负责 DNS、TLS 证书与边缘缓存；这个 Worker 托管个人主页与本页，其余流量按原样回源，不做改写。</p>
+        <p class="ldesc">Cloudflare 负责 DNS、TLS 证书与边缘缓存；个人主页和项目页由 K3s 静态服务提供，业务请求按域名与路径回源。</p>
       </div>
       <div class="rung">
         <p class="lname">集群入口<span>NGINX GATEWAY FABRIC</span></p>
@@ -470,23 +471,28 @@ td.sys{color:var(--ink);font-weight:600;white-space:nowrap}
       </div>
       <div class="rung">
         <p class="lname">一致性<span>SEATA / OUTBOX</span></p>
-        <p class="ldesc">站内转账、钱包支付和内部冲正走短时 TCC；外卖订单、通道回调与开户走本地事务加 Outbox/Inbox 加幂等状态机，不用长事务。</p>
+        <p class="ldesc">站内转账、钱包支付和内部冲正走短时 TCC；外部通道回调与开户走本地事务加 Outbox/Inbox 加幂等状态机，不使用长事务。</p>
       </div>
       <div class="rung">
         <p class="lname">数据与中间件<span>DATA</span></p>
-        <p class="ldesc">MySQL 存业务数据，Redis 承载缓存与令牌，RabbitMQ 传递领域事件，Seata 协调分布式事务，对象存储承载头像等静态资源。</p>
+        <p class="ldesc">MySQL 存业务数据，Redis 承载缓存与会话状态，RabbitMQ 传递领域事件，Seata 协调短时分布式事务；各业务服务只读写自己拥有的数据。</p>
       </div>
     </div>
-    <p class="note-line">外卖和支付是两个独立服务：外卖不能直接改支付状态，支付也不能改外卖订单，两边靠事件和状态机对齐。这条约束看起来多余，但它决定了出问题时能不能查清楚。</p>
+    <p class="note-line">身份、钱包、支付和智能助手各自遵守服务边界：余额与账本只由钱包服务写入，支付密码只进入身份服务，米灵只调用经过授权的白名单接口。</p>
   </section>
 
   <section id="entries" class="col">
     <div class="sec-head">
       <p class="eyebrow"><span class="num">03</span><span class="rule" aria-hidden="true"></span><span class="lbl">模块入口</span></p>
-      <h2>六个可以打开的演示入口</h2>
-      <p class="sub">都在同一个演示环境内，账号通用、数据互通，点开就是真实页面。</p>
+      <h2>四个可以打开的演示入口</h2>
+      <p class="sub">入口处于同一沙箱环境，但面向不同角色，登录方式、权限与可见数据彼此独立。</p>
     </div>
     <div class="entries">
+      <a class="ecard" href="https://app.su46proj.site/" target="_blank" rel="noopener">
+        <span class="etop"><span class="nm">消费者 H5</span><span class="arrow" aria-hidden="true">↗</span></span>
+        <span class="desc">首页、米灵、账单、收付款与银行卡</span>
+        <span class="host">app.su46proj.site</span>
+      </a>
       <a class="ecard" href="https://ops.su46proj.site/" target="_blank" rel="noopener">
         <span class="etop"><span class="nm">运营端</span><span class="arrow" aria-hidden="true">↗</span></span>
         <span class="desc">平台运营工作台</span>
@@ -501,21 +507,6 @@ td.sys{color:var(--ink);font-weight:600;white-space:nowrap}
         <span class="etop"><span class="nm">管理端</span><span class="arrow" aria-hidden="true">↗</span></span>
         <span class="desc">系统管理后台</span>
         <span class="host">admin.su46proj.site</span>
-      </a>
-      <a class="ecard" href="https://app.su46proj.site/" target="_blank" rel="noopener">
-        <span class="etop"><span class="nm">消费者 H5</span><span class="arrow" aria-hidden="true">↗</span></span>
-        <span class="desc">短信登录、米灵对话、钱包与转账</span>
-        <span class="host">app.su46proj.site</span>
-      </a>
-      <a class="ecard" href="https://food.su46proj.site/" target="_blank" rel="noopener">
-        <span class="etop"><span class="nm">外卖 H5</span><span class="arrow" aria-hidden="true">↗</span></span>
-        <span class="desc">消费者下单页</span>
-        <span class="host">food.su46proj.site</span>
-      </a>
-      <a class="ecard" href="https://food-admin.su46proj.site/" target="_blank" rel="noopener">
-        <span class="etop"><span class="nm">外卖后台</span><span class="arrow" aria-hidden="true">↗</span></span>
-        <span class="desc">订单与配送管理</span>
-        <span class="host">food-admin.su46proj.site</span>
       </a>
     </div>
   </section>
@@ -534,6 +525,12 @@ td.sys{color:var(--ink);font-weight:600;white-space:nowrap}
         </thead>
         <tbody>
         <tr>
+          <td class="sys">消费者 H5</td>
+          <td><code>任意演示手机号</code></td>
+          <td><code>123456</code></td>
+          <td><a href="https://app.su46proj.site/" target="_blank" rel="noopener">app.su46proj.site</a></td>
+        </tr>
+        <tr>
           <td class="sys">运营端</td>
           <td><code>13800138000</code></td>
           <td><code>MiniPay@123456</code></td>
@@ -551,43 +548,25 @@ td.sys{color:var(--ink);font-weight:600;white-space:nowrap}
           <td><code>MiniPay@123456</code></td>
           <td><a href="https://admin.su46proj.site/" target="_blank" rel="noopener">admin.su46proj.site</a></td>
         </tr>
-        <tr>
-          <td class="sys">消费者 H5</td>
-          <td><code>任意演示手机号</code></td>
-          <td><code>123456</code></td>
-          <td><a href="https://app.su46proj.site/" target="_blank" rel="noopener">app.su46proj.site</a></td>
-        </tr>
-        <tr>
-          <td class="sys">外卖后台</td>
-          <td><code>admin</code></td>
-          <td><code>admin123</code></td>
-          <td><a href="https://food-admin.su46proj.site/" target="_blank" rel="noopener">food-admin.su46proj.site</a></td>
-        </tr>
-        <tr>
-          <td class="sys">外卖 H5</td>
-          <td><code>任意演示手机号</code></td>
-          <td><code>123456</code></td>
-          <td><a href="https://food.su46proj.site/" target="_blank" rel="noopener">food.su46proj.site</a></td>
-        </tr>
         </tbody>
       </table>
     </div>
-    <p class="note-line">消费者 H5 和外卖 H5 的短信验证码固定为 <code>123456</code>，手机号填任意演示号码即可。演示环境的数据可能会定期重置。</p>
+    <p class="note-line">消费者 H5 的短信验证码固定为 <code>123456</code>，手机号填任意演示号码即可。其他入口使用各自列出的账号；演示数据可能会定期重置。</p>
   </section>
 
   <section id="howto" class="col">
     <div class="sec-head">
       <p class="eyebrow"><span class="num">05</span><span class="rule" aria-hidden="true"></span><span class="lbl">使用说明</span></p>
-      <h2>按这个顺序走一遍，十来分钟能看完主链路</h2>
-      <p class="sub">从后台数据看到用户下单支付，再到订单流转，整条链路的每一步都有对应的入口。</p>
+      <h2>按这个顺序走一遍消费者主链路</h2>
+      <p class="sub">先体验 H5 的钱包与资金操作，再按需进入角色控制台核对数据和权限边界。</p>
     </div>
     <ol class="steps">
-      <li><div><b>先进管理端看数据</b><p>打开 admin.su46proj.site，用 13800138002 / MiniPay@123456 登录，翻一遍支付单、渠道配置和账本分录，先看清楚一笔钱在系统里长什么样。</p></div></li>
-      <li><div><b>再对比运营端和商户端</b><p>用 13800138000 登录 ops.su46proj.site、用 13900000009 登录 merchant.su46proj.site，同一个订单在平台视角和商户视角下的差别一眼就能看出来。</p></div></li>
-      <li><div><b>去外卖 H5 下一单</b><p>打开 food.su46proj.site，选门店、加购物车并下单，用验证码 123456 登录，再用钱包完成支付。</p></div></li>
-      <li><div><b>回到外卖后台看订单流转</b><p>用 admin / admin123 登录 food-admin.su46proj.site，找到刚才那笔订单，走一遍接单、配送、完成的状态流转。</p></div></li>
-      <li><div><b>打开消费者 H5 看用户端</b><p>打开 app.su46proj.site，用任意演示手机号加验证码 123456 登录，看钱包余额与账单明细、打开收款码，再试一次沙箱转账，最后和米灵聊几句（回答是逐字流式出现的）。</p></div></li>
-      <li><div><b>试一下 AI 智能助手</b><p>在米灵对话里查询订单或余额，观察它是通过白名单工具接口取数，而不是直接访问数据库；登录密码、支付密码和验证码都不经过模型。</p></div></li>
+      <li><div><b>先登录消费者 H5</b><p>打开 app.su46proj.site，用任意演示手机号和验证码 123456 登录；新账号按页面引导补充昵称，再进入金融首页。</p></div></li>
+      <li><div><b>查看钱包与账单</b><p>在首页查看沙箱余额、账户状态和最近账单，再进入账单页体验分页、空数据与详情展示。</p></div></li>
+      <li><div><b>体验收付款与转账</b><p>打开个人收款码，或通过扫码、手输收款码和手机号进入付款或转账；涉及资金的步骤仍需在确认页输入支付密码。</p></div></li>
+      <li><div><b>体验银行卡与资金确认链</b><p>在银行卡页绑定演示卡，并体验余额查询、充值和提现。所有金额都是沙箱数据，创建订单不等于完成，必须以确认结果为准。</p></div></li>
+      <li><div><b>试一下米灵助手</b><p>在米灵里查询钱包或账单，或用自然语言生成转账建议。助手只调用白名单接口；涉及资金时只负责引导，最终仍由用户在钱包页确认。</p></div></li>
+      <li><div><b>最后查看角色控制台</b><p>分别登录运营端、商户端和管理端，查看各角色被授权的数据与功能；它们处于同一沙箱，但账号和权限并不通用。</p></div></li>
     </ol>
   </section>
 
@@ -616,14 +595,13 @@ td.sys{color:var(--ink);font-weight:600;white-space:nowrap}
   <div class="top">
     <div class="bio">
       <span class="wordmark"><span class="sep" aria-hidden="true"></span>su46proj.site</span>
-      <p>MiniPay AI —— 数字支付、钱包与外卖一体化的演示平台，由独立开发者苏启航设计与实现。</p>
+      <p>MiniPay AI —— 以消费者 H5 为核心的数字钱包与智能支付演示平台，由独立开发者苏启航设计与实现。</p>
     </div>
     <nav class="fnav" aria-label="站点导航">
       <a href="https://ops.su46proj.site/" target="_blank" rel="noopener">运营端</a>
       <a href="https://merchant.su46proj.site/" target="_blank" rel="noopener">商户端</a>
       <a href="https://admin.su46proj.site/" target="_blank" rel="noopener">管理端</a>
-      <a href="https://food.su46proj.site/" target="_blank" rel="noopener">外卖 H5</a>
-      <a href="https://food-admin.su46proj.site/" target="_blank" rel="noopener">外卖后台</a>
+      <a href="https://app.su46proj.site/" target="_blank" rel="noopener">消费者 H5</a>
       <a href="https://su46proj.site/">作者主页</a>
     </nav>
   </div>

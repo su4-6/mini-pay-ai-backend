@@ -78,9 +78,12 @@ Remove-Item -Recurse -Force $tempDir
 foreach ($file in @($payPath, $personalPath)) {
     $text = Get-Content -LiteralPath $file -Raw
     $apk = ([regex]::Matches($text, 'dl\.su46proj\.site|download\.su46proj\.site|\.apk')).Count
+    $retired = ([regex]::Matches($text, '外卖|food\.su46proj\.site|food-admin\.su46proj\.site|Android')).Count
     $h5 = ([regex]::Matches($text, 'app\.su46proj\.site')).Count
-    Write-Host ("  {0}: {1} bytes, apk refs={2}, h5 links={3}" -f (Split-Path $file -Leaf), $text.Length, $apk, $h5)
+    Write-Host ("  {0}: {1} bytes, apk refs={2}, retired refs={3}, h5 links={4}" -f (Split-Path $file -Leaf), $text.Length, $apk, $retired, $h5)
     if ($apk -gt 0) { throw ("{0} still references the retired APK" -f (Split-Path $file -Leaf)) }
+    if ($retired -gt 0) { throw ("{0} still references a retired consumer surface" -f (Split-Path $file -Leaf)) }
+    if ($h5 -eq 0) { throw ("{0} does not link to the consumer H5" -f (Split-Path $file -Leaf)) }
 }
 
 if ($SkipApply) {

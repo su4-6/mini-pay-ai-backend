@@ -171,8 +171,8 @@ export default {
       }
     }
 
-    // 5) Every other host (food./food-admin./app./identity./
-    //    payment./wallet./commerce./agent. ...) is served by the K3s cluster.
+    // 5) Every other host (app./identity./payment./wallet./agent. ...)
+    //    is served by the K3s cluster.
     //    Pass through untouched.
     return fetch(request);
   },

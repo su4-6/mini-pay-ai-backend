@@ -24,8 +24,8 @@ landing-worker/
 
 | 内容 | 说明 |
 | --- | --- |
-| 个人主页 | 作者介绍、项目展示、技术栈、示例账号、消费者 H5 入口、联系方式 |
-| 产品落地页 | MiniPay AI 定位、核心能力、架构一览、演示账号与入口、使用说明、项目跳转 |
+| 个人主页 | 作者介绍、项目展示、技术栈、消费者 H5 入口、联系方式 |
+| 产品落地页 | MiniPay AI 定位、核心能力、架构一览、四个在线入口、演示账号与 H5 使用说明 |
 
 两个页面均包含完整备案页脚：ICP 备案（`豫ICP备2026043015号` → https://beian.miit.gov.cn/ ）与
 公安联网备案（图标 + `豫公网安备41010502008025号` → https://beian.mps.gov.cn/#/query/webSearch?code=41010502008025 ），
@@ -45,7 +45,7 @@ landing-worker/
 | 3 | `host === pay.su46proj.site` | 返回 `projectLandingPage()`，`text/html; charset=utf-8`，200 |
 | 4 | 其他所有 host | `fetch(request)` 原样回源 |
 
-第 4 条是关键：`ops.`、`merchant.`、`admin.`、`food.`、`food-admin.`、`app.`、`identity.`、`payment.`、`wallet.`、`commerce.`、`agent.` 等子域由 Kubernetes 集群直接提供服务，Worker 不做任何拦截或改写。
+第 4 条是关键：`ops.`、`merchant.`、`admin.`、`app.`、`identity.`、`payment.`、`wallet.`、`agent.` 等子域由 Kubernetes 集群直接提供服务，Worker 不做任何拦截或改写。
 
 ## Android 分发已退役（原 APK / R2 分支）
 
@@ -122,4 +122,4 @@ curl -X POST "https://api.cloudflare.com/client/v4/zones/<zone>/purge_cache" \
 
 - 单文件自包含：无 CDN、无 Web Font、无第三方 JS，打开 HTML 即可渲染。
 - 移动端优先响应式，使用 CSS 自定义属性、卡片、渐变与 hover 过渡。
-- 外链均为 `target="_blank" rel="noopener"`，且只指向 `ops / merchant / admin / app / food / food-admin` 这几个 `su46proj.site` 子域。
+- 外链均为 `target="_blank" rel="noopener"`，且业务入口只指向 `app / ops / merchant / admin` 四个仍在展示范围内的 `su46proj.site` 子域。

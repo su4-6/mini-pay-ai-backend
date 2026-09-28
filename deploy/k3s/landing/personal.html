@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23131418'/%3E%3Cpath d='M18 18h9l5 10 5-10h9v28h-8V31l-6 11-6-11v15h-8z' fill='%23fff'/%3E%3C/svg%3E">
 <title>苏启航 · 独立开发者 | su46proj.site</title>
 <meta name="description" content="独立开发者苏启航的个人主页：支付与钱包系统、微服务与可靠性工程，以及正在维护的项目与联系方式。">
 <meta name="theme-color" content="#faf9f7">
@@ -376,23 +377,23 @@ td.sys{color:var(--ink);font-weight:600;white-space:nowrap}
   <section class="hero col">
     <p class="status-pill"><i aria-hidden="true"></i>可合作 · 在线演示可用</p>
     <h1>苏启航 — 我做支付与钱包系统，也把它真正跑起来。</h1>
-    <p class="lede">独立开发者，后端与全栈。一个人写服务、搭集群、做界面，目前主要在做 MiniPay AI：把支付、钱包和外卖业务放在同一套微服务里的演示平台。我关心的不是功能列表有多长，而是钱有没有算对、账能不能对上、服务挂掉之后能不能自己恢复。</p>
+    <p class="lede">独立开发者，后端与全栈。一个人写服务、搭集群、做界面，目前主要在做 MiniPay AI：以消费者 H5 串起身份、钱包、收付款、转账、银行卡和米灵助手。我关心的不是功能列表有多长，而是钱有没有算对、账能不能对上、服务挂掉之后能不能自己恢复。</p>
     <div class="acts">
       <a class="btn solid" href="https://pay.su46proj.site/">查看项目<span class="arrow" aria-hidden="true">→</span></a>
       <a class="btn" href="https://app.su46proj.site/">打开消费者 H5</a>
       <a class="btn" href="mailto:su_qihang@163.com">联系我</a>
     </div>
     <div class="facts">
-      <div class="cell"><span class="n">6</span><span class="k">个后端微服务</span><span class="d">各自独占数据</span></div>
-      <div class="cell"><span class="n">12</span><span class="k">个运行中工作负载</span><span class="d">同一套 K3s</span></div>
-      <div class="cell"><span class="n">6</span><span class="k">个 Web 端入口</span><span class="d">含消费者 H5</span></div>
+      <div class="cell"><span class="n">4</span><span class="k">个 Web 端入口</span><span class="d">消费者与三类后台</span></div>
+      <div class="cell"><span class="n">1</span><span class="k">套消费者 H5</span><span class="d">移动端优先</span></div>
+      <div class="cell"><span class="n">3</span><span class="k">类角色控制台</span><span class="d">权限边界清晰</span></div>
       <div class="cell"><span class="n">1</span><span class="k">套自建 K3s 集群</span><span class="d">Cloudflare 回源</span></div>
     </div>
     <p class="meta-line">
       <span><i aria-hidden="true"></i>Java 21 / Spring Boot 3</span>
       <span><i aria-hidden="true"></i>K3s 私有集群</span>
       <span><i aria-hidden="true"></i>Cloudflare 边缘接入</span>
-      <span><i aria-hidden="true"></i>支付 · 钱包 · 外卖</span>
+      <span><i aria-hidden="true"></i>支付 · 钱包 · 米灵</span>
     </p>
   </section>
 
@@ -445,7 +446,7 @@ td.sys{color:var(--ink);font-weight:600;white-space:nowrap}
       </div>
       <div class="gpanel">
         <div class="gtop"><h3>云与边缘</h3><span class="note">接入与分发</span></div>
-        <div class="chips"><span class="chip">Cloudflare Worker</span><span class="chip">R2 对象存储</span><span class="chip">DNS / WAF</span><span class="chip">边缘缓存</span></div>
+        <div class="chips"><span class="chip">Cloudflare Worker</span><span class="chip">DNS / WAF</span><span class="chip">TLS / Origin CA</span><span class="chip">边缘缓存</span></div>
       </div>
     </div>
   </section>
@@ -463,11 +464,11 @@ td.sys{color:var(--ink);font-weight:600;white-space:nowrap}
           <span class="status"><i aria-hidden="true"></i>在线运行</span>
         </div>
         <div class="inner">
-          <h3>数字支付 / 钱包 / 外卖一体化演示平台</h3>
-          <p class="desc">我自己完整实现并长期维护的一套支付与本地生活演示平台。从统一身份认证、复式账本钱包到支付编排、对账与外卖配送，全部跑在自建的 K3s 集群上，并带一个只能调用白名单工具的 AI 助手；消费者端是一套 H5，打开就能用，不用装 App。</p>
+          <h3>消费者 H5 / 数字钱包 / 智能支付演示平台</h3>
+          <p class="desc">我自己完整实现并长期维护的一套数字支付演示平台。从统一身份认证、复式账本钱包到收付款、转账、银行卡与资金确认链，全部跑在自建的 K3s 集群上；消费者端采用响应式 H5，并内置只能调用白名单工具的米灵助手。</p>
           <div class="meta"><span class="chip">Java 21</span><span class="chip">Spring Boot 3</span><span class="chip">K3s</span><span class="chip">OAuth2 + PKCE</span><span class="chip">复式账本</span></div>
           <div class="foot">
-            <span class="muted" style="font-size:.9rem">项目详情页包含五个模块入口、演示账号与使用说明</span>
+            <span class="muted" style="font-size:.9rem">项目详情页包含四个在线入口、演示账号与 H5 使用说明</span>
             <a class="btn solid" href="https://pay.su46proj.site/">查看项目<span class="arrow" aria-hidden="true">→</span></a>
           </div>
         </div>
@@ -513,7 +514,7 @@ td.sys{color:var(--ink);font-weight:600;white-space:nowrap}
   <div class="top">
     <div class="bio">
       <span class="wordmark"><span class="sep" aria-hidden="true"></span>su46proj.site</span>
-      <p>独立开发者的个人主页。目前在做 MiniPay AI，一个把支付、钱包与外卖业务放在同一套微服务里的演示平台。</p>
+      <p>独立开发者的个人主页。目前在做 MiniPay AI，一个以消费者 H5 连接身份、支付、钱包与智能助手的演示平台。</p>
     </div>
     <nav class="fnav" aria-label="站点导航">
       <a href="#about">01 关于我</a>
