@@ -9,11 +9,13 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -26,6 +28,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1")
+@Validated
 public class TransferController {
     private final TransferService transfers;
 
@@ -46,6 +49,18 @@ public class TransferController {
                 request.amountCent(),
                 request.remark(),
                 request.source() == null ? "FORM" : request.source());
+    }
+
+    /**
+     * Bounded, current-user-only transfer history used by read-only clients such as Miling.
+     * The model receives authoritative payment state but no credential or payment authorization.
+     */
+    @GetMapping("/transfers")
+    public List<TransferOrder> list(
+            @AuthenticationPrincipal Jwt jwt,
+            @org.springframework.web.bind.annotation.RequestParam(defaultValue = "20")
+            @Min(1) @Max(20) int limit) {
+        return transfers.listOrders(ConsumerClaims.requireReadyUser(jwt, false), limit);
     }
 
     @PostMapping("/transfers/{intentId}/confirm")

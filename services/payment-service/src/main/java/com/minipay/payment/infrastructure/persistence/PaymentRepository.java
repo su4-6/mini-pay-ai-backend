@@ -343,6 +343,29 @@ public class PaymentRepository {
                 uuidToBytes(transferId));
     }
 
+    /** Recent outgoing transfers owned by the authenticated consumer, newest first. */
+    public List<TransferOrder> listTransferOrders(UUID payerUserId, int limit) {
+        return jdbcTemplate.query("""
+                        SELECT o.transfer_id, o.intent_id, i.receiver_user_id, o.amount_cent,
+                               o.status, o.failure_code, o.updated_at
+                        FROM transfer_order o
+                        JOIN transfer_intent i ON i.intent_id = o.intent_id
+                        WHERE i.payer_user_id = ?
+                        ORDER BY o.updated_at DESC, o.transfer_id DESC
+                        LIMIT ?
+                        """,
+                (resultSet, rowNumber) -> new TransferOrder(
+                        bytesToUuid(resultSet.getBytes("transfer_id")),
+                        bytesToUuid(resultSet.getBytes("intent_id")),
+                        bytesToUuid(resultSet.getBytes("receiver_user_id")),
+                        resultSet.getLong("amount_cent"),
+                        resultSet.getString("status"),
+                        resultSet.getString("failure_code"),
+                        resultSet.getTimestamp("updated_at").toInstant()),
+                uuidToBytes(payerUserId),
+                limit);
+    }
+
     public TransferOrderRow insertTransferOrder(
             UUID transferId,
             String transferNo,

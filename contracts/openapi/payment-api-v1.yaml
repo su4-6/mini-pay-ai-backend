@@ -8,6 +8,18 @@ info:
     channels in the current implementation are explicitly marked as sandbox.
 paths:
   /api/v1/transfers:
+    get:
+      summary: List the current consumer's recent outgoing transfers
+      security: [{minipayOAuth: [payment.transfer.read]}]
+      x-minipay-audience: consumer-api
+      parameters:
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 20, default: 20}}
+      responses:
+        '200':
+          description: Newest transfers first
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/TransferOrder'}}
     post:
       summary: Create an immutable transfer intent
       security: [{minipayOAuth: [payment.transfer.write]}]

@@ -11,8 +11,9 @@ import com.minipay.payment.infrastructure.persistence.PaymentRepository.Transfer
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
-import java.util.Set;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.apache.seata.core.exception.TransactionException;
 import org.apache.seata.core.model.GlobalStatus;
@@ -145,6 +146,10 @@ public class TransferService {
         return repository.findTransferOrder(payerUserId, transferId)
                 .orElseThrow(() -> new PaymentProblemException(
                         "TRANSFER_ORDER_NOT_FOUND", HttpStatus.NOT_FOUND));
+    }
+
+    public List<TransferOrder> listOrders(UUID payerUserId, int limit) {
+        return repository.listTransferOrders(payerUserId, limit);
     }
 
     public TransferOrder resume(UUID transferId) {
