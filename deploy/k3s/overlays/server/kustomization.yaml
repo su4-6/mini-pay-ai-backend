@@ -46,6 +46,17 @@ patches:
   - target: {group: gateway.nginx.org, version: v1alpha2, kind: NginxProxy, name: minipay-gateway-proxy}
     patch: |-
       - {op: add, path: /spec/disableHTTP2, value: true}
+      - op: add
+        path: /spec/compression
+        value:
+          type: gzip
+          minLength: 1024
+          level: 5
+          mimeTypes: [application/javascript, application/json, image/svg+xml, text/css, text/plain]
+          gzip:
+            vary: true
+            httpVersion: "1.1"
+            proxied: [any]
   # ---------------------------------------------------------------------------
   # 外卖栈暂时下线（**变更 #47/#48**）：节点内存只有 3.7 GiB，yshop-server 单进程约 600 MiB。
   # 关掉后 food./food-admin. 由 maintenance-page 顶一张「维护中」说明页（不再 503）。
