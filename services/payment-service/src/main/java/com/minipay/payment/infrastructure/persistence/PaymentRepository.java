@@ -683,6 +683,32 @@ public class PaymentRepository {
                 uuidToBytes(withdrawalId));
     }
 
+    public Optional<WithdrawalRow> findWithdrawalRow(UUID withdrawalId) {
+        return jdbcTemplate.query("""
+                        SELECT withdrawal_id, withdrawal_no, user_id, bank_card_id,
+                               authorization_id, authorized_at, idempotency_key,
+                               request_hash, amount_cent, status, bank_request_no,
+                               failure_code, updated_at
+                        FROM withdrawal_order
+                        WHERE withdrawal_id = ?
+                        """,
+                resultSet -> resultSet.next() ? Optional.of(mapWithdrawalRow(resultSet)) : Optional.empty(),
+                uuidToBytes(withdrawalId));
+    }
+
+    public java.util.List<UUID> findRecoverableWithdrawalIds(int limit) {
+        return jdbcTemplate.query("""
+                        SELECT withdrawal_id
+                        FROM withdrawal_order
+                        WHERE status = 'PROCESSING' AND authorization_id IS NOT NULL
+                          AND updated_at < DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 2 SECOND)
+                        ORDER BY updated_at
+                        LIMIT ?
+                        """,
+                (resultSet, rowNumber) -> bytesToUuid(resultSet.getBytes("withdrawal_id")),
+                limit);
+    }
+
     public FundingOrderPage listWithdrawals(UUID userId, int page, int size) {
         long total = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM withdrawal_order WHERE user_id = ?", Long.class,

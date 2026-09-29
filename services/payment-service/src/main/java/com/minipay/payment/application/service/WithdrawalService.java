@@ -83,6 +83,17 @@ public class WithdrawalService {
         return repository.listWithdrawals(userId, Math.max(1, page), Math.min(100, Math.max(1, size)));
     }
 
+    /** Resumes an authorized withdrawal using the idempotent wallet and bank request numbers. */
+    public WithdrawalOrder resume(UUID withdrawalId) {
+        WithdrawalRow order = repository.findWithdrawalRow(withdrawalId)
+                .orElseThrow(() -> new PaymentProblemException(
+                        "WITHDRAWAL_NOT_FOUND", HttpStatus.NOT_FOUND));
+        if (!"PROCESSING".equals(order.status()) || order.authorizationId() == null) {
+            return order.toPublicModel();
+        }
+        return process(order);
+    }
+
     public WithdrawalOrder confirm(
             UUID userId,
             UUID withdrawalId,
