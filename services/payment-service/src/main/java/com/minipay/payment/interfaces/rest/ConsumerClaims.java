@@ -9,11 +9,16 @@ final class ConsumerClaims {
     private ConsumerClaims() {
     }
 
-    static UUID requireReadyUser(Jwt jwt, boolean requirePaymentPassword) {
+    static UUID requireOnboardedUser(Jwt jwt) {
         if (!Boolean.TRUE.equals(jwt.getClaim("onboarding_completed"))) {
             throw new PaymentProblemException(
                     "ONBOARDING_REQUIRED", HttpStatus.FORBIDDEN);
         }
+        return requireSubject(jwt);
+    }
+
+    static UUID requireReadyUser(Jwt jwt, boolean requirePaymentPassword) {
+        UUID userId = requireOnboardedUser(jwt);
         if (!Boolean.TRUE.equals(jwt.getClaim("real_name_verified"))) {
             String status = jwt.getClaimAsString("real_name_status");
             throw new PaymentProblemException(
@@ -26,6 +31,10 @@ final class ConsumerClaims {
             throw new PaymentProblemException(
                     "PAYMENT_PASSWORD_REQUIRED", HttpStatus.FORBIDDEN);
         }
+        return userId;
+    }
+
+    private static UUID requireSubject(Jwt jwt) {
         try {
             return UUID.fromString(jwt.getSubject());
         } catch (RuntimeException exception) {

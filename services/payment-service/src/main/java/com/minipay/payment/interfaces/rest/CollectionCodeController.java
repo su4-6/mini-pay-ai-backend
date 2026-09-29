@@ -31,7 +31,10 @@ public class CollectionCodeController {
 
     @GetMapping("/personal-collection-codes/current")
     public PersonalCollectionCode current(@AuthenticationPrincipal Jwt jwt) {
-        return codes.current(ConsumerClaims.requireReadyUser(jwt, false));
+        // Every onboarded personal account owns a collection code. Real-name and payment-password
+        // gates remain on the payer's transfer confirmation path, so showing a receiver code does
+        // not weaken the funds-authorization boundary.
+        return codes.current(ConsumerClaims.requireOnboardedUser(jwt));
     }
 
     @PostMapping("/scan-resolutions")
