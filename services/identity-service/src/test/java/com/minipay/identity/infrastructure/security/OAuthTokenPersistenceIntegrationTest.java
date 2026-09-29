@@ -272,6 +272,32 @@ class OAuthTokenPersistenceIntegrationTest {
     }
 
     @Test
+    void firstConsumerLoginRepairsBackofficeAccountWithoutDuplicatingIdentityOrEvent() throws Exception {
+        ConsumerAccountRepository accounts =
+                new ConsumerAccountRepository(jdbc, new ObjectMapper(),
+                        new com.minipay.identity.application.service.PhoneDisclosureCipher(
+                                "test-phone-disclosure-key-at-least-32-characters", "test"));
+        UUID userId = UUID.randomUUID();
+        byte[] phoneHash = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(("backoffice-first-" + userId).getBytes(StandardCharsets.UTF_8));
+        insertActiveUser(userId, phoneHash);
+
+        ConsumerPrincipal first = transactions.execute(status ->
+                accounts.findOrCreate(phoneHash, "repair-trace-1"));
+        ConsumerPrincipal second = transactions.execute(status ->
+                accounts.findOrCreate(phoneHash, "repair-trace-2"));
+
+        assertThat(first.userId()).isEqualTo(userId);
+        assertThat(second.userId()).isEqualTo(userId);
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM user_profile WHERE phone_hash = ?",
+                Integer.class, phoneHash)).isOne();
+        assertThat(jdbc.queryForObject("""
+                SELECT COUNT(*) FROM outbox_event
+                WHERE aggregate_id = ? AND event_type = 'identity.user.opened'
+                """, Integer.class, AdminAccountRepository.uuidToBytes(userId))).isOne();
+    }
+
+    @Test
     void changingPhoneRevokesEveryRefreshFamilyForTheConsumer() throws Exception {
         UUID userId = UUID.randomUUID();
         byte[] originalPhoneHash = java.security.MessageDigest.getInstance("SHA-256")

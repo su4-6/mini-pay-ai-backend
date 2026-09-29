@@ -2,9 +2,10 @@ package com.minipay.identity.infrastructure.persistence;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.minipay.identity.application.service.UuidV7;
 import com.minipay.identity.application.service.PhoneDisclosureCipher;
+import com.minipay.identity.application.service.UuidV7;
 import com.minipay.identity.domain.model.ConsumerPrincipal;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -30,29 +31,25 @@ public class ConsumerAccountRepository {
     @Transactional
     public ConsumerPrincipal findOrCreate(byte[] phoneHash, String traceId) {
         Optional<ConsumerPrincipal> existing = findByPhoneHash(phoneHash);
-        if (existing.isPresent()) {
-            return requireActive(existing.get());
+        if (existing.isEmpty()) {
+            UUID candidateId = UuidV7.generate();
+            jdbcTemplate.update("""
+                    INSERT IGNORE INTO user_profile (
+                      user_id, login_name, minipay_no, phone_hash, nickname, status, version,
+                      created_at, updated_at
+                    ) VALUES (?, ?, ?, ?, '米灵用户', 'ACTIVE', 0,
+                              UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
+                    """,
+                    AdminAccountRepository.uuidToBytes(candidateId),
+                    "consumer_" + candidateId.toString().replace("-", ""),
+                    "MP" + candidateId.toString().replace("-", "")
+                            .substring(0, 20).toUpperCase(java.util.Locale.ROOT),
+                    phoneHash);
         }
-
-        UUID candidateId = UuidV7.generate();
-        int inserted = jdbcTemplate.update("""
-                INSERT IGNORE INTO user_profile (
-                  user_id, login_name, minipay_no, phone_hash, nickname, status, version,
-                  created_at, updated_at
-                ) VALUES (?, ?, ?, ?, '米灵用户', 'ACTIVE', 0,
-                          UTC_TIMESTAMP(6), UTC_TIMESTAMP(6))
-                """,
-                AdminAccountRepository.uuidToBytes(candidateId),
-                "consumer_" + candidateId.toString().replace("-", ""),
-                "MP" + candidateId.toString().replace("-", "")
-                        .substring(0, 20).toUpperCase(java.util.Locale.ROOT),
-                phoneHash);
         ConsumerPrincipal principal = findByPhoneHashForUpdate(phoneHash)
                 .map(this::requireActive)
                 .orElseThrow(() -> new IllegalStateException("Consumer registration did not converge"));
-        if (inserted == 1) {
-            appendUserOpened(principal.userId(), traceId);
-        }
+        ensureUserOpened(principal.userId(), traceId);
         return principal;
     }
 
@@ -158,7 +155,16 @@ public class ConsumerAccountRepository {
         return principal;
     }
 
-    private void appendUserOpened(UUID userId, String traceId) {
+    private void ensureUserOpened(UUID userId, String traceId) {
+        List<Integer> existing = jdbcTemplate.query("""
+                SELECT 1
+                FROM outbox_event
+                WHERE event_type = 'identity.user.opened' AND aggregate_id = ?
+                LIMIT 1 FOR UPDATE
+                """, (resultSet, row) -> 1, AdminAccountRepository.uuidToBytes(userId));
+        if (!existing.isEmpty()) {
+            return;
+        }
         UUID eventId = UuidV7.generate();
         jdbcTemplate.update("""
                 INSERT INTO outbox_event (

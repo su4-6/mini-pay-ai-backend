@@ -81,6 +81,8 @@ public class SystemAdminController {
                               AND lc.credential_type='LOGIN_PASSWORD' AND lc.status='ACTIVE') login_password_set,
                        EXISTS(SELECT 1 FROM user_credential pc WHERE pc.user_id=u.user_id
                               AND pc.credential_type='PAYMENT_PASSWORD' AND pc.status='ACTIVE') payment_password_set,
+                       EXISTS(SELECT 1 FROM outbox_event oe WHERE oe.aggregate_id=u.user_id
+                              AND oe.event_type='identity.user.opened') consumer_opened,
                        GROUP_CONCAT(r.role_code ORDER BY r.role_code) roles
                 FROM user_profile u LEFT JOIN consumer_email_contact e ON e.user_id=u.user_id
                 LEFT JOIN user_role r ON r.user_id=u.user_id
@@ -96,7 +98,7 @@ public class SystemAdminController {
     @Transactional(readOnly = true)
     public AdminSummary summary(JwtAuthenticationToken auth) {
         requireRead(auth);
-        long consumers=count("SELECT COUNT(1) FROM user_profile WHERE onboarding_status='COMPLETED'");
+        long consumers=count("SELECT COUNT(DISTINCT aggregate_id) FROM outbox_event WHERE event_type='identity.user.opened'");
         long merchantOwners=countRole("merchant_owner");
         long operators=countRole("platform_admin");
         long administrators=count("SELECT COUNT(DISTINCT user_id) FROM user_role WHERE role_code IN ('system_super_admin','system_account_admin','system_auditor')");
@@ -284,7 +286,7 @@ public class SystemAdminController {
         if(role!=null&&!role.isBlank()){w.append(" AND EXISTS(SELECT 1 FROM user_role ur WHERE ur.user_id=u.user_id AND ur.role_code=?)");args.add(role.trim());}
         return w.toString();
     }
-    private AccountView mapAccount(java.sql.ResultSet rs,int row)throws java.sql.SQLException{String raw=rs.getString("roles");List<String> roles=raw==null?List.of():Arrays.asList(raw.split(","));return new AccountView(AdminAccountRepository.bytesToUuid(rs.getBytes("user_id")).toString(),rs.getString("minipay_no"),rs.getString("nickname"),rs.getString("phone_masked"),rs.getString("email_masked"),rs.getString("status"),rs.getString("credential_type"),rs.getString("onboarding_status"),rs.getBoolean("login_password_set"),rs.getBoolean("payment_password_set"),roles,rs.getLong("version"),rs.getTimestamp("created_at").toInstant());}
+    private AccountView mapAccount(java.sql.ResultSet rs,int row)throws java.sql.SQLException{String raw=rs.getString("roles");List<String> roles=raw==null?List.of():Arrays.asList(raw.split(","));return new AccountView(AdminAccountRepository.bytesToUuid(rs.getBytes("user_id")).toString(),rs.getString("minipay_no"),rs.getString("nickname"),rs.getString("phone_masked"),rs.getString("email_masked"),rs.getString("status"),rs.getString("credential_type"),rs.getString("onboarding_status"),rs.getBoolean("consumer_opened"),rs.getBoolean("login_password_set"),rs.getBoolean("payment_password_set"),roles,rs.getLong("version"),rs.getTimestamp("created_at").toInstant());}
     private UUID requireRead(JwtAuthenticationToken a){UUID id=UUID.fromString(a.getName());if(roles(a).stream().noneMatch(SYSTEM_ROLES::contains))throw problem(HttpStatus.FORBIDDEN,"ADMIN_ROLE_REQUIRED");return id;}
     private UUID requireWriter(JwtAuthenticationToken a){UUID id=requireRead(a);if(!roles(a).contains("system_super_admin")&&!roles(a).contains("system_account_admin"))throw problem(HttpStatus.FORBIDDEN,"ADMIN_WRITE_FORBIDDEN");return id;}
     private UUID requireSuper(JwtAuthenticationToken a){UUID id=requireRead(a);if(!roles(a).contains("system_super_admin"))throw problem(HttpStatus.FORBIDDEN,"SUPER_ADMIN_REQUIRED");return id;}
@@ -313,7 +315,7 @@ public class SystemAdminController {
         }
         return decoded;
     }
-    public record AccountView(String userId,String minipayNo,String displayName,String maskedMobile,String maskedEmail,String status,String credentialType,String onboardingStatus,boolean loginPasswordSet,boolean paymentPasswordSet,List<String> roles,long version,Instant createdAt){}
+    public record AccountView(String userId,String minipayNo,String displayName,String maskedMobile,String maskedEmail,String status,String credentialType,String onboardingStatus,boolean consumerOpened,boolean loginPasswordSet,boolean paymentPasswordSet,List<String> roles,long version,Instant createdAt){}
     public record AccountPage(List<AccountView> items,int page,int size,long total){}
     public record AdminSummary(long consumers,long merchantOwners,long operators,long administrators){}
     public record AuditView(String auditId,String actorUserId,String action,String targetType,String targetId,String result,String reason,String requestId,Instant occurredAt){}
