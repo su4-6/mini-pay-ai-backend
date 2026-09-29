@@ -2,11 +2,16 @@ package com.minipay.identity.interfaces.rest;
 
 import com.minipay.identity.application.service.MerchantOwnerAccountService;
 import com.minipay.identity.application.service.MerchantOwnerAccountService.ResolvedMerchantOwner;
+import com.minipay.identity.infrastructure.persistence.ConsumerAccountRepository;
+import java.util.Map;
+import java.util.UUID;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -19,9 +24,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping
 public class InternalAccountController {
     private final MerchantOwnerAccountService accounts;
+    private final ConsumerAccountRepository consumers;
 
-    public InternalAccountController(MerchantOwnerAccountService accounts) {
+    public InternalAccountController(MerchantOwnerAccountService accounts, ConsumerAccountRepository consumers) {
         this.accounts = accounts;
+        this.consumers = consumers;
+    }
+
+    @GetMapping("/internal/v1/accounts/{userId}/verified-mobile")
+    public Map<String, String> verifiedMobile(@PathVariable UUID userId) {
+        return Map.of("mobile", consumers.requireVerifiedMobile(userId));
     }
 
     @PostMapping("/internal/v1/accounts/merchant-owner")

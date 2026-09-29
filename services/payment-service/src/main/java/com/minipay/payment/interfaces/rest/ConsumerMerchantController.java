@@ -111,15 +111,14 @@ public class ConsumerMerchantController {
     }
 
     @GetMapping("/collection-code")
-    public BusinessCollectionCode collectionCode(@AuthenticationPrincipal Jwt jwt) {
+    public BusinessCollectionCode collectionCode(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam UUID merchantId) {
         UUID ownerId = subject(jwt);
-        MerchantService.MerchantView merchant = merchants.current(ownerId);
-        if (merchant == null) {
-            throw new PaymentProblemException("MERCHANT_NOT_FOUND", HttpStatus.NOT_FOUND);
-        }
+        MerchantService.MerchantView merchant = merchants.merchant(ownerId, merchantId);
         return new BusinessCollectionCode(
                 merchant,
-                merchants.currentBusinessCollectionCode(ownerId));
+                merchants.currentBusinessCollectionCode(ownerId, merchantId));
     }
 
     @PostMapping("/image-uploads")
@@ -161,7 +160,7 @@ public class ConsumerMerchantController {
             @NotNull @DecimalMin("-180") @DecimalMax("180") BigDecimal longitude,
             @NotBlank @Size(max = 4000) String shopImages,
             @NotBlank @Size(min = 2, max = 64) String contactName,
-            @NotBlank @Pattern(regexp = "^1[3-9]\\d{9}$") String contactMobile,
+            @Pattern(regexp = "^$|^1[3-9]\\d{9}$") String contactMobile,
             @Size(max = 254) String contactEmail,
             @Size(max = 500) String remark) {
     }
@@ -176,7 +175,7 @@ public class ConsumerMerchantController {
             @NotNull @DecimalMin("-180") @DecimalMax("180") BigDecimal longitude,
             @NotBlank @Size(max = 4000) String shopImages,
             @NotBlank @Size(min = 2, max = 64) String contactName,
-            @NotBlank @Pattern(regexp = "^1[3-9]\\d{9}$") String contactMobile,
+            @Pattern(regexp = "^$|^1[3-9]\\d{9}$") String contactMobile,
             @Size(max = 254) String contactEmail,
             @Size(max = 500) String remark) {
     }

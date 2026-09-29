@@ -45,11 +45,7 @@ public class MerchantService {
     }
 
     public List<MerchantView> merchants(UUID ownerUserId) {
-        // One Identity user owns one merchant capability. Historical operations rows remain
-        // visible to Ops, but customer portals receive only the canonical oldest owner binding.
-        return repository.findByOwner(ownerUserId)
-                .map(row -> List.of(MerchantView.from(row)))
-                .orElseGet(List::of);
+        return repository.findAllByOwner(ownerUserId).stream().map(MerchantView::from).toList();
     }
 
     public MerchantView merchant(UUID ownerUserId, UUID merchantId) {
@@ -435,6 +431,14 @@ public class MerchantService {
 
     public CollectionCodeView currentBusinessCollectionCode(UUID ownerUserId) {
         MerchantRow merchant = requireMerchant(ownerUserId);
+        MerchantApplicationRow application = repository.findDefaultApplication(merchant.merchantId())
+                .orElseThrow(() -> problem("MERCHANT_NOT_INITIALIZED", HttpStatus.CONFLICT));
+        return CollectionCodeView.from(repository.findCollectionCode(application.applicationId())
+                .orElseThrow(() -> problem("COLLECTION_CODE_NOT_FOUND", HttpStatus.NOT_FOUND)));
+    }
+
+    public CollectionCodeView currentBusinessCollectionCode(UUID ownerUserId, UUID merchantId) {
+        MerchantRow merchant = requireMerchant(ownerUserId, merchantId);
         MerchantApplicationRow application = repository.findDefaultApplication(merchant.merchantId())
                 .orElseThrow(() -> problem("MERCHANT_NOT_INITIALIZED", HttpStatus.CONFLICT));
         return CollectionCodeView.from(repository.findCollectionCode(application.applicationId())

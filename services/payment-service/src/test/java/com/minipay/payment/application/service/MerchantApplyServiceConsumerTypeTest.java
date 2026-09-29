@@ -42,7 +42,6 @@ class MerchantApplyServiceConsumerTypeTest {
         MerchantApplyStore.ApplyView historical = view(userId, MerchantType.PERSONAL);
         MerchantApplyStore.ApplyPage storedPage = new MerchantApplyStore.ApplyPage(
                 List.of(historical), 0, 20, 1);
-        when(applies.findBoundView(userId)).thenReturn(java.util.Optional.of(historical));
         when(applies.findPage(0, 20, null, userId)).thenReturn(storedPage);
 
         MerchantApplyStore.ApplyPage consumerPage = service.listForOwner(userId, 0, 20);
@@ -57,21 +56,29 @@ class MerchantApplyServiceConsumerTypeTest {
     }
 
     @Test
-    void ownerQueryReturnsOnlyTheGuardBoundApplication() {
+    void ownerQueryReturnsEveryStoreApplicationWithNormalPaging() {
         UUID userId = UUID.randomUUID();
-        MerchantApplyStore.ApplyView current = view(userId, MerchantType.INDIVIDUAL);
-        when(applies.findBoundView(userId)).thenReturn(java.util.Optional.of(current));
+        MerchantApplyStore.ApplyView first = view(1L, userId, MerchantType.INDIVIDUAL);
+        MerchantApplyStore.ApplyView second = view(2L, userId, MerchantType.ENTERPRISE);
+        when(applies.findPage(0, 20, null, userId)).thenReturn(
+                new MerchantApplyStore.ApplyPage(List.of(first, second), 0, 20, 2));
+        when(applies.findPage(1, 20, null, userId)).thenReturn(
+                new MerchantApplyStore.ApplyPage(List.of(), 1, 20, 2));
 
         assertThat(service.listForOwner(userId, 0, 20).items())
-                .singleElement().extracting(MerchantApplyStore.ApplyView::id).isEqualTo(1L);
+                .extracting(MerchantApplyStore.ApplyView::id).containsExactly(1L, 2L);
         assertThat(service.listForOwner(userId, 1, 20).items()).isEmpty();
-        assertThat(service.listForOwner(userId, 1, 20).total()).isEqualTo(1);
+        assertThat(service.listForOwner(userId, 1, 20).total()).isEqualTo(2);
     }
 
     private static MerchantApplyStore.ApplyView view(UUID userId, MerchantType type) {
+        return view(1L, userId, type);
+    }
+
+    private static MerchantApplyStore.ApplyView view(long id, UUID userId, MerchantType type) {
         Instant now = Instant.parse("2026-08-08T12:00:00Z");
         return new MerchantApplyStore.ApplyView(
-                1L, userId, type.name(), "示例店铺", null, "上海市浦东新区",
+                id, userId, type.name(), "示例店铺" + id, null, "上海市浦东新区",
                 java.math.BigDecimal.valueOf(31.23), java.math.BigDecimal.valueOf(121.47),
                 "merchant/apply/shop.jpg", "张*", "13800000000", null, null,
                 MerchantApplyStatus.PENDING, null, null, null, now, null, 0L, now, now);

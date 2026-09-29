@@ -292,3 +292,8 @@ Merchant order reads remain owner-and-merchant scoped and use server-side pagina
 owner has one personal wallet shared by every merchant they own. Payment records wallet provision
 state once per owner, retries failed provisioning, and backfills historical owners; opening the
 wallet page is a read-only operation.
+
+Consumer and merchant onboarding is store-scoped: one identity owner may submit and own multiple
+stores, each approved application creates exactly one merchant aggregate, application, and merchant
+collection code. Store selection is explicit on collection-code APIs; settlement still targets the
+single owner wallet, so adding a store never creates or mutates another wallet.

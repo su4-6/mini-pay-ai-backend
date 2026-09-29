@@ -193,12 +193,6 @@ public interface OpsMapper {
     @Select(APPLY_VIEW_COLUMNS + " WHERE a.id = #{id}")
     ApplyRow findApply(@Param("id") long id);
 
-    @Select(APPLY_VIEW_COLUMNS + """
-             JOIN merchant_onboarding_guard g ON g.apply_id = a.id
-            WHERE g.user_id = #{userId}
-            """)
-    ApplyRow findBoundApply(@Param("userId") byte[] userId);
-
     @Insert("""
             INSERT INTO merchant_apply (
               user_id, merchant_type, shop_name, normalized_shop_name, submission_version,
@@ -218,16 +212,9 @@ public interface OpsMapper {
     int insertApply(ApplyRow apply);
 
     @Insert("""
-            INSERT IGNORE INTO merchant_onboarding_guard (
+            INSERT INTO merchant_onboarding_guard (
               user_id, apply_id, merchant_id, created_at, updated_at
-            ) VALUES (#{userId}, NULL, NULL, #{now}, #{now})
-            """)
-    int reserveOnboardingOwner(@Param("userId") byte[] userId, @Param("now") LocalDateTime now);
-
-    @Update("""
-            UPDATE merchant_onboarding_guard
-               SET apply_id = #{applyId}, updated_at = #{now}
-             WHERE user_id = #{userId} AND apply_id IS NULL
+            ) VALUES (#{userId}, #{applyId}, NULL, #{now}, #{now})
             """)
     int bindOnboardingApplication(@Param("userId") byte[] userId,
                                   @Param("applyId") long applyId,

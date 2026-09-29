@@ -151,6 +151,22 @@ public class ConsumerAccountRepository {
                 AdminAccountRepository.uuidToBytes(userId));
     }
 
+    public String requireVerifiedMobile(UUID userId) {
+        return jdbcTemplate.query("""
+                        SELECT phone_ciphertext, phone_nonce, phone_key_id
+                        FROM user_profile
+                        WHERE user_id = ? AND status = 'ACTIVE'
+                          AND phone_ciphertext IS NOT NULL
+                        """,
+                resultSet -> {
+                    if (!resultSet.next()) {
+                        throw new ConsumerAccountDisabledException();
+                    }
+                    return phoneCipher.decrypt(userId, resultSet.getBytes("phone_ciphertext"),
+                            resultSet.getBytes("phone_nonce"), resultSet.getString("phone_key_id"));
+                }, AdminAccountRepository.uuidToBytes(userId));
+    }
+
     private ConsumerPrincipal requireActive(ConsumerPrincipal principal) {
         return principal;
     }

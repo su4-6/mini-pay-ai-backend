@@ -86,9 +86,12 @@ public class ConsumerMerchantProxyController {
 
     @GetMapping("/collection-code")
     public Mono<ResponseEntity<String>> collectionCode(
-            WebSession session, ServerWebExchange exchange) {
+            WebSession session, ServerWebExchange exchange,
+            @RequestParam @NotBlank @Size(max = 36) String merchantId) {
+        UUID.fromString(merchantId);
         return proxy(session, exchange, HttpMethod.GET,
-                "/api/v1/consumer-merchant/collection-code", Map.of(), null, null);
+                "/api/v1/consumer-merchant/collection-code",
+                Map.of("merchantId", merchantId), null, null);
     }
 
     @PostMapping("/image-uploads")

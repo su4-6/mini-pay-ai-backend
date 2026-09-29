@@ -78,6 +78,23 @@ public class IdentityServiceClient {
         }
     }
 
+    public String verifiedMobile(UUID userId) {
+        try {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> response = identity.get()
+                    .uri("/internal/v1/accounts/{userId}/verified-mobile", userId)
+                    .header("Authorization", "Bearer " + serviceToken())
+                    .retrieve().body(Map.class);
+            if (response == null || response.get("mobile") == null) {
+                throw new IllegalStateException("Identity did not return a verified mobile");
+            }
+            return response.get("mobile").toString();
+        } catch (RestClientException exception) {
+            throw new OpsBusinessException(HttpStatus.BAD_GATEWAY, "IDENTITY_UNAVAILABLE",
+                    "Identity service could not provide the verified contact mobile");
+        }
+    }
+
     private String serviceToken() {
         CachedToken current = cached;
         if (current != null && current.expiresAt().isAfter(Instant.now().plusSeconds(20))) {

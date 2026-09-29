@@ -72,10 +72,10 @@ public class MerchantApplyService {
             throw new OpsBusinessException(HttpStatus.BAD_REQUEST, "INVALID_PAGE",
                     "page must be non-negative and size must be between 1 and 100");
         }
-        ApplyView bound = applies.findBoundView(userId).orElse(null);
-        List<ApplyView> items = page == 0 && bound != null
-                ? List.of(normalizeConsumerView(bound)) : List.of();
-        return new ApplyPage(items, page, size, bound == null ? 0 : 1);
+        ApplyPage result = applies.findPage(page, size, null, userId);
+        return new ApplyPage(result.items().stream()
+                .map(MerchantApplyService::normalizeConsumerView).toList(),
+                result.page(), result.size(), result.total());
     }
 
     @Transactional
@@ -94,8 +94,9 @@ public class MerchantApplyService {
             String remark,
             String idempotencyKey,
             String requestId) {
+        String authoritativeMobile = merchantManagement.verifiedMobile(userId);
         Submission submission = normalizeSubmission(merchantType, shopName, mccCode, address,
-                latitude, longitude, shopImages, contactName, contactMobile, contactEmail, remark);
+                latitude, longitude, shopImages, contactName, authoritativeMobile, contactEmail, remark);
         String operation = "merchant-apply:submit";
         String requestDigest = DigestService.sha256(submission.digestInput());
         IdempotencyStore.Claim claim = claim(userId.toString(), operation, idempotencyKey,
@@ -105,10 +106,10 @@ public class MerchantApplyService {
             return normalizeConsumerView(replay);
         }
         Instant now = clock.instant();
-        if (!applies.reserveOwner(userId, now)) {
+        if (applies.existsOpenByOwnerAndShop(userId, submission.normalizedShopName(), -1L)) {
             throw new OpsBusinessException(HttpStatus.CONFLICT,
-                    "MERCHANT_ONBOARDING_ALREADY_EXISTS",
-                    "This user already has a merchant onboarding application");
+                    "MERCHANT_SHOP_ONBOARDING_ALREADY_EXISTS",
+                    "This store already has an open onboarding application");
         }
         MerchantApply apply = new MerchantApply(0L, userId, submission.merchantType(),
                 submission.shopName(), submission.mccCode(), submission.address(),
@@ -145,8 +146,9 @@ public class MerchantApplyService {
             String remark,
             String idempotencyKey,
             String requestId) {
+        String authoritativeMobile = merchantManagement.verifiedMobile(userId);
         Submission submission = normalizeSubmission(merchantType, shopName, mccCode, address,
-                latitude, longitude, shopImages, contactName, contactMobile, contactEmail, remark);
+                latitude, longitude, shopImages, contactName, authoritativeMobile, contactEmail, remark);
         String operation = "merchant-apply:resubmit:" + id;
         String requestDigest = DigestService.sha256(expectedVersion + "|" + submission.digestInput());
         IdempotencyStore.Claim claim = claim(userId.toString(), operation, idempotencyKey,
@@ -210,11 +212,10 @@ public class MerchantApplyService {
                     "Only a pending application can be approved");
         }
 
-        // 复用 BD 代建的创建路径：按申请里的「联系电话」解析/创建归属账号并生成商户，
-        // 保证商户归属手机号与其联系电话一致（手机号是唯一归属键）。
-        MerchantStore.MerchantView merchant = merchantManagement.createForApprovedApplicantByMobile(
-                before.contactMobile(), before.contactName(), before.shopName(),
-                shortName(before.shopName()), before.contactEmail(), before.remark(),
+        MerchantStore.MerchantView merchant = merchantManagement.createForApprovedApplicant(
+                before.userId(), before.shopName(),
+                shortName(before.shopName()), before.contactName(), before.contactMobile(),
+                before.contactEmail(), before.remark(),
                 before.merchantType(), before.mccCode(), before.address(),
                 before.latitude(), before.longitude(), before.shopImages(),
                 actorId, idempotencyKey, requestId);

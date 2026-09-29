@@ -215,6 +215,10 @@ public class MerchantManagementService {
                 actorId, idempotencyKey, requestId);
     }
 
+    public String verifiedMobile(UUID ownerUserId) {
+        return identity.verifiedMobile(ownerUserId);
+    }
+
     @Transactional
     public MerchantView update(
             UUID merchantId,
