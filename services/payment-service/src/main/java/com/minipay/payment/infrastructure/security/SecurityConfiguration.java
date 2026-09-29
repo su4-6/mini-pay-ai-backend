@@ -110,6 +110,12 @@ public class SecurityConfiguration {
                         .requestMatchers(HttpMethod.POST, "/api/v1/scan-resolutions")
                         .access(audienceAndScope(
                                 "consumer-api", "payment.collection-code.read"))
+                        .requestMatchers(HttpMethod.GET, "/api/v1/consumer-merchant/**")
+                        .access(audienceAndScope("consumer-api", "payment.merchant.read"))
+                        .requestMatchers(HttpMethod.POST, "/api/v1/consumer-merchant/**")
+                        .access(audienceAndScope("consumer-api", "payment.merchant.write"))
+                        .requestMatchers(HttpMethod.PUT, "/api/v1/consumer-merchant/**")
+                        .access(audienceAndScope("consumer-api", "payment.merchant.write"))
                         .requestMatchers(HttpMethod.GET, "/api/v1/merchant/onboardings")
                         .access(portalAudienceAndScope("merchant.portal.read"))
                         .requestMatchers(HttpMethod.POST, "/api/v1/merchant/image-read-urls")

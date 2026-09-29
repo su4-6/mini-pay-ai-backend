@@ -59,6 +59,25 @@ public class TransferProxyController {
                         preparation.expiresAt()));
     }
 
+    @PostMapping("/transfers/prepare-from-collection-code")
+    public Mono<ResponseEntity<Map<String, Object>>> prepareFromCollectionCode(
+            WebSession session,
+            ServerWebExchange exchange,
+            @Valid @RequestBody PrepareCollectionTransferRequest request) {
+        return sessions.preparePersonalCollectionTransfer(
+                        session,
+                        exchange,
+                        request.deepLink(),
+                        request.amountFen(),
+                        request.remark(),
+                        RequestIds.of(exchange))
+                .map(preparation -> UpstreamResponses.prepared(
+                        preparation.transferIntentId(),
+                        preparation.payeeMasked(),
+                        preparation.amountFen(),
+                        preparation.expiresAt()));
+    }
+
     @PostMapping("/transfers/{intentId}/confirm")
     public Mono<ResponseEntity<Map<String, Object>>> confirm(
             WebSession session,
@@ -121,6 +140,12 @@ public class TransferProxyController {
 
     public record PrepareTransferRequest(
             @NotBlank @Size(max = 128) String payeeIdentifier,
+            @Min(1) @Max(1_000_000) long amountFen,
+            @Size(max = 50) String remark) {
+    }
+
+    public record PrepareCollectionTransferRequest(
+            @NotBlank @Size(max = 2048) String deepLink,
             @Min(1) @Max(1_000_000) long amountFen,
             @Size(max = 50) String remark) {
     }

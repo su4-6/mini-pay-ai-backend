@@ -634,6 +634,64 @@ public class ConsumerSessionService {
                                 .thenReturn(preparation)));
     }
 
+    /**
+     * Prepares a transfer from a personal collection code without trusting a receiver id supplied
+     * by the browser. The code is resolved again server-side, then the resulting owner id is used
+     * only for the upstream transfer intent and is never accepted as browser input.
+     */
+    public Mono<TransferPreparation> preparePersonalCollectionTransfer(
+            WebSession webSession,
+            ServerWebExchange exchange,
+            String deepLink,
+            long amountFen,
+            String remark,
+            String requestId) {
+        if (amountFen < 1) {
+            return Mono.error(new UpstreamProblemException(
+                    HttpStatus.BAD_REQUEST, "TRANSFER_AMOUNT_INVALID", "转账金额必须大于 0"));
+        }
+        SessionTokenStore sessions = session(webSession);
+        return resolveCollectionCode(webSession, exchange, deepLink, null, requestId)
+                .map(response -> {
+                    if (!response.successful()) {
+                        throw translate(response, "COLLECTION_CODE_RESOLUTION_FAILED");
+                    }
+                    Map<String, Object> document = parse(response);
+                    if (!"PERSONAL_COLLECTION".equals(firstText(document, "type"))) {
+                        throw new UpstreamProblemException(
+                                HttpStatus.UNPROCESSABLE_ENTITY,
+                                "PERSONAL_COLLECTION_CODE_REQUIRED",
+                                "该收款码不是个人收款码");
+                    }
+                    String receiverUserId = firstText(document, "receiverUserId");
+                    if (receiverUserId == null) {
+                        throw new UpstreamProblemException(
+                                HttpStatus.BAD_GATEWAY,
+                                "PAYEE_RESOLUTION_INVALID",
+                                "上游未返回收款人标识");
+                    }
+                    String display = firstText(document, "receiverDisplay", "receiverNickname");
+                    return new ResolvedPayee(receiverUserId, display == null ? "个人用户" : display);
+                })
+                .flatMap(payee -> upstream.call(
+                                webSession,
+                                exchange.getRequest(),
+                                HttpMethod.POST,
+                                "/api/v1/transfers",
+                                Map.of(),
+                                Map.of(
+                                        "receiverUserId", payee.recipientUserId(),
+                                        "amountCent", amountFen,
+                                        "remark", remark == null ? "" : remark,
+                                        "source", "PERSONAL_COLLECTION_CODE"),
+                                UUID.randomUUID().toString())
+                        .map(response -> toPreparation(response, payee))
+                        .flatMap(preparation -> sessions
+                                .storePreparedTransfer(
+                                        preparation.transferIntentId(), preparation.amountFen())
+                                .thenReturn(preparation)));
+    }
+
     private Mono<ResolvedPayee> resolvePayee(
             WebSession session, ServerWebExchange exchange, String payeeIdentifier, String requestId) {
         if (payeeIdentifier == null || payeeIdentifier.isBlank()) {

@@ -45,7 +45,11 @@ public class MerchantService {
     }
 
     public List<MerchantView> merchants(UUID ownerUserId) {
-        return repository.findAllByOwner(ownerUserId).stream().map(MerchantView::from).toList();
+        // One Identity user owns one merchant capability. Historical operations rows remain
+        // visible to Ops, but customer portals receive only the canonical oldest owner binding.
+        return repository.findByOwner(ownerUserId)
+                .map(row -> List.of(MerchantView.from(row)))
+                .orElseGet(List::of);
     }
 
     public MerchantView merchant(UUID ownerUserId, UUID merchantId) {

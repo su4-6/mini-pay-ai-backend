@@ -193,6 +193,12 @@ public interface OpsMapper {
     @Select(APPLY_VIEW_COLUMNS + " WHERE a.id = #{id}")
     ApplyRow findApply(@Param("id") long id);
 
+    @Select(APPLY_VIEW_COLUMNS + """
+             JOIN merchant_onboarding_guard g ON g.apply_id = a.id
+            WHERE g.user_id = #{userId}
+            """)
+    ApplyRow findBoundApply(@Param("userId") byte[] userId);
+
     @Insert("""
             INSERT INTO merchant_apply (
               user_id, merchant_type, shop_name, normalized_shop_name, submission_version,

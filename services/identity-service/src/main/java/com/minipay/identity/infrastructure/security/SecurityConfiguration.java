@@ -903,7 +903,8 @@ public class SecurityConfiguration {
 
     /**
      * 消费者 H5 BFF：与 Android 客户端同为公共客户端（PKCE，无 client_secret），
-     * 但 scope 只覆盖浏览器端 H5 实际使用的功能，绝不含 merchant/ops/admin 权限。
+     * 但 scope 只覆盖浏览器端 H5 实际使用的功能。商户能力仅包含本人商户资料的
+     * {@code payment.merchant.*}，绝不包含 merchant portal、ops 或 admin 权限。
      * 常量清单由 {@code ConsumerBffClientScopeTest} 断言，防止以后被误加越权 scope。
      */
     private static final List<String> CONSUMER_BFF_SCOPES = List.of(
@@ -927,6 +928,8 @@ public class SecurityConfiguration {
             //（2026-09-27 用真实商户收款码实测发现）。
             "payment.order.write",
             "payment.collection-code.read",
+            "payment.merchant.read",
+            "payment.merchant.write",
             "agent.conversation");
 
     static List<String> consumerBffScopes() {

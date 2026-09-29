@@ -140,6 +140,8 @@ class SecurityConfigurationTest {
                 // 扫码付款创建/确认支付单需要它（上游 POST /api/v1/payment-orders/** 的 scope）
                 "payment.order.write",
                 "payment.collection-code.read",
+                "payment.merchant.read",
+                "payment.merchant.write",
                 "agent.conversation");
     }
 

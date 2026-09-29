@@ -319,6 +319,67 @@ class ConsumerApiIntegrationTest extends ConsumerBffIntegrationTest {
     }
 
     @Test
+    void personalCollectionCodePreparesATransferWithoutTrustingABrowserReceiverId() throws Exception {
+        login();
+        String csrf = csrfToken();
+        PAYMENT.enqueue(json(200, "{\"type\":\"PERSONAL_COLLECTION\"," +
+                "\"receiverUserId\":\"" + PAYEE_ID + "\"," +
+                "\"receiverDisplay\":\"小满（张*）\",\"receiverNickname\":\"小满\"}"));
+        PAYMENT.enqueue(json(201, INTENT_JSON));
+
+        withCookies(client.post().uri("/api/v1/transfers/prepare-from-collection-code")
+                        .header("Content-Type", "application/json")
+                        .header("X-CSRF-TOKEN", csrf))
+                .bodyValue("{\"deepLink\":\"minipay://collect/personal?token=abc\"," +
+                        "\"amountFen\":2500,\"remark\":\"扫码转账\"}")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.transferIntentId").isEqualTo(INTENT_ID)
+                .jsonPath("$.payeeMasked").isEqualTo("小满（张*）")
+                .jsonPath("$.amountFen").isEqualTo(2500);
+
+        RecordedRequest resolution = takeRequest(PAYMENT);
+        assertThat(resolution.getPath()).isEqualTo("/api/v1/scan-resolutions");
+        assertThat(body(resolution).path("deepLink").asText())
+                .isEqualTo("minipay://collect/personal?token=abc");
+
+        RecordedRequest create = takeRequest(PAYMENT);
+        assertThat(create.getPath()).isEqualTo("/api/v1/transfers");
+        assertThat(body(create).path("receiverUserId").asText()).isEqualTo(PAYEE_ID);
+        assertThat(body(create).path("source").asText()).isEqualTo("PERSONAL_COLLECTION_CODE");
+        assertThat(body(create).toString()).doesNotContain("receiverUserIdFromBrowser");
+    }
+
+    @Test
+    void consumerMerchantCenterRelaysTheAuthoritativeMerchantState() throws Exception {
+        login();
+        String csrf = csrfToken();
+        PAYMENT.enqueue(json(200, "{\"items\":[{\"id\":7,\"applyStatus\":\"PENDING\"}]," +
+                "\"page\":0,\"size\":20,\"total\":1}"));
+
+        withCookies(client.get().uri("/api/v1/merchant-center/onboardings"))
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody()
+                .jsonPath("$.items[0].id").isEqualTo(7)
+                .jsonPath("$.items[0].applyStatus").isEqualTo("PENDING");
+        assertThat(takeRequest(PAYMENT).getPath())
+                .isEqualTo("/api/v1/consumer-merchant/onboardings?page=0&size=20");
+
+        PAYMENT.enqueue(json(201, "{\"id\":7,\"applyStatus\":\"PENDING\"}"));
+        withCookies(client.post().uri("/api/v1/merchant-center/onboardings")
+                        .header("Content-Type", "application/json")
+                        .header("X-CSRF-TOKEN", csrf))
+                .bodyValue("{\"merchantType\":\"INDIVIDUAL\",\"shopName\":\"演示店铺\"}")
+                .exchange()
+                .expectStatus().isCreated();
+        RecordedRequest submit = takeRequest(PAYMENT);
+        assertThat(submit.getPath()).isEqualTo("/api/v1/consumer-merchant/onboardings");
+        assertThat(submit.getHeader("Idempotency-Key")).isNotBlank();
+    }
+
+    @Test
     void confirmWithoutAPositiveAmountIsRejectedBeforeAnyAuthorization() {
         login();
         String csrf = csrfToken();

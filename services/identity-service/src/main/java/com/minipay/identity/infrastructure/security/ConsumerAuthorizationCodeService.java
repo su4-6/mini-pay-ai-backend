@@ -45,6 +45,8 @@ public class ConsumerAuthorizationCodeService {
             "payment.order.read",
             "payment.order.write",
             "payment.collection-code.read",
+            "payment.merchant.read",
+            "payment.merchant.write",
             "merchant.portal.read",
             "merchant.portal.write",
             "wallet.read",

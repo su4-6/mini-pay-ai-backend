@@ -13,6 +13,9 @@ public interface MerchantApplyStore {
 
     Optional<ApplyView> findView(long id);
 
+    /** The single customer-facing application selected by merchant_onboarding_guard. */
+    Optional<ApplyView> findBoundView(UUID userId);
+
     Optional<MerchantApply> find(long id);
 
     long insert(MerchantApply apply);

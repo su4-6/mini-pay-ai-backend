@@ -153,6 +153,34 @@ class SecurityConfigurationTest {
     }
 
     @Test
+    void consumerMerchantReadAndWriteScopesStaySeparated() throws Exception {
+        mvc.perform(get("/api/v1/consumer-merchant/merchants").with(jwt()
+                        .jwt(token -> token.audience(List.of("consumer-api")))
+                        .authorities(new SimpleGrantedAuthority("SCOPE_payment.merchant.write"))))
+                .andExpect(status().isForbidden());
+
+        mvc.perform(get("/api/v1/consumer-merchant/merchants").with(jwt()
+                        .jwt(token -> token.audience(List.of("consumer-api")))
+                        .authorities(new SimpleGrantedAuthority("SCOPE_payment.merchant.read"))))
+                .andExpect(status().isNotFound());
+
+        mvc.perform(post("/api/v1/consumer-merchant/onboardings").with(jwt()
+                        .jwt(token -> token.audience(List.of("consumer-api")))
+                        .authorities(new SimpleGrantedAuthority("SCOPE_payment.merchant.read"))))
+                .andExpect(status().isForbidden());
+
+        mvc.perform(post("/api/v1/consumer-merchant/onboardings").with(jwt()
+                        .jwt(token -> token.audience(List.of("consumer-api")))
+                        .authorities(new SimpleGrantedAuthority("SCOPE_payment.merchant.write"))))
+                .andExpect(status().isNotFound());
+
+        mvc.perform(get("/api/v1/consumer-merchant/merchants").with(jwt()
+                        .jwt(token -> token.audience(List.of("merchant-api")))
+                        .authorities(new SimpleGrantedAuthority("SCOPE_payment.merchant.read"))))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
     void everySignedInPortalUserCanUploadMerchantImagesWithoutABusinessScope() throws Exception {
         mvc.perform(post("/api/v1/merchant/image-uploads").with(jwt()
                         .jwt(token -> token.audience(List.of("consumer-api")))))

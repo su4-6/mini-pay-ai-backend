@@ -14,6 +14,7 @@ import com.minipay.payment.domain.model.MerchantType;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -67,10 +68,14 @@ public class MerchantApplyService {
 
     @Transactional(readOnly = true)
     public ApplyPage listForOwner(UUID userId, int page, int size) {
-        ApplyPage result = list(page, size, null, userId);
-        return new ApplyPage(
-                result.items().stream().map(MerchantApplyService::normalizeConsumerView).toList(),
-                result.page(), result.size(), result.total());
+        if (page < 0 || size < 1 || size > 100) {
+            throw new OpsBusinessException(HttpStatus.BAD_REQUEST, "INVALID_PAGE",
+                    "page must be non-negative and size must be between 1 and 100");
+        }
+        ApplyView bound = applies.findBoundView(userId).orElse(null);
+        List<ApplyView> items = page == 0 && bound != null
+                ? List.of(normalizeConsumerView(bound)) : List.of();
+        return new ApplyPage(items, page, size, bound == null ? 0 : 1);
     }
 
     @Transactional

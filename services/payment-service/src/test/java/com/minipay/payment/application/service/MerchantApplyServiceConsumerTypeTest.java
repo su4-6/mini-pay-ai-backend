@@ -42,6 +42,7 @@ class MerchantApplyServiceConsumerTypeTest {
         MerchantApplyStore.ApplyView historical = view(userId, MerchantType.PERSONAL);
         MerchantApplyStore.ApplyPage storedPage = new MerchantApplyStore.ApplyPage(
                 List.of(historical), 0, 20, 1);
+        when(applies.findBoundView(userId)).thenReturn(java.util.Optional.of(historical));
         when(applies.findPage(0, 20, null, userId)).thenReturn(storedPage);
 
         MerchantApplyStore.ApplyPage consumerPage = service.listForOwner(userId, 0, 20);
@@ -53,6 +54,18 @@ class MerchantApplyServiceConsumerTypeTest {
         assertThat(opsPage.items()).singleElement()
                 .extracting(MerchantApplyStore.ApplyView::merchantType)
                 .isEqualTo(MerchantType.PERSONAL.name());
+    }
+
+    @Test
+    void ownerQueryReturnsOnlyTheGuardBoundApplication() {
+        UUID userId = UUID.randomUUID();
+        MerchantApplyStore.ApplyView current = view(userId, MerchantType.INDIVIDUAL);
+        when(applies.findBoundView(userId)).thenReturn(java.util.Optional.of(current));
+
+        assertThat(service.listForOwner(userId, 0, 20).items())
+                .singleElement().extracting(MerchantApplyStore.ApplyView::id).isEqualTo(1L);
+        assertThat(service.listForOwner(userId, 1, 20).items()).isEmpty();
+        assertThat(service.listForOwner(userId, 1, 20).total()).isEqualTo(1);
     }
 
     private static MerchantApplyStore.ApplyView view(UUID userId, MerchantType type) {

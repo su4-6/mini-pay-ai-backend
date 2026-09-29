@@ -136,6 +136,12 @@ public class OpsPersistenceAdapter
     }
 
     @Override
+    public Optional<MerchantApplyStore.ApplyView> findBoundView(UUID userId) {
+        return Optional.ofNullable(mapper.findBoundApply(bytes(userId)))
+                .map(OpsPersistenceAdapter::toApplyView);
+    }
+
+    @Override
     public Optional<MerchantApply> find(long id) {
         return Optional.ofNullable(mapper.findApply(id))
                 .map(OpsPersistenceAdapter::toApply);
