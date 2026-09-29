@@ -29,15 +29,15 @@ class MerchantApplyServiceConsumerTypeTest {
             mock(Clock.class));
 
     @Test
-    void normalizesEveryConsumerSubmissionTypeToIndividual() {
+    void preservesTheMerchantTypeSelectedByTheConsumer() {
         assertThat(List.of(MerchantType.values()))
                 .allSatisfy(type -> assertThat(
                         MerchantApplyService.normalizeConsumerMerchantType(type))
-                        .isEqualTo(MerchantType.INDIVIDUAL));
+                        .isEqualTo(type));
     }
 
     @Test
-    void ownerQueryNormalizesHistoricalTypeWithoutChangingOpsQuery() {
+    void ownerAndOpsQueriesExposeTheSameAuthoritativeType() {
         UUID userId = UUID.randomUUID();
         MerchantApplyStore.ApplyView historical = view(userId, MerchantType.PERSONAL);
         MerchantApplyStore.ApplyPage storedPage = new MerchantApplyStore.ApplyPage(
@@ -50,7 +50,7 @@ class MerchantApplyServiceConsumerTypeTest {
 
         assertThat(consumerPage.items()).singleElement()
                 .extracting(MerchantApplyStore.ApplyView::merchantType)
-                .isEqualTo(MerchantType.INDIVIDUAL.name());
+                .isEqualTo(MerchantType.PERSONAL.name());
         assertThat(opsPage.items()).singleElement()
                 .extracting(MerchantApplyStore.ApplyView::merchantType)
                 .isEqualTo(MerchantType.PERSONAL.name());

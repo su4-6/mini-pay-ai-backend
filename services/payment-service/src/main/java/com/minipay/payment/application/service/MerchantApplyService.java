@@ -354,17 +354,11 @@ public class MerchantApplyService {
     }
 
     static MerchantType normalizeConsumerMerchantType(MerchantType requestedType) {
-        return MerchantType.INDIVIDUAL;
+        return java.util.Objects.requireNonNull(requestedType, "requestedType");
     }
 
     static ApplyView normalizeConsumerView(ApplyView view) {
-        return new ApplyView(
-                view.id(), view.userId(), MerchantType.INDIVIDUAL.name(), view.shopName(),
-                view.mccCode(), view.address(), view.latitude(), view.longitude(),
-                view.shopImages(), view.contactName(), view.contactMobile(), view.contactEmail(),
-                view.remark(), view.applyStatus(), view.rejectReason(), view.auditAdminId(),
-                view.resultantMerchantId(), view.applyTime(), view.auditTime(), view.version(),
-                view.createdAt(), view.updatedAt());
+        return view;
     }
 
     private static String normalizeShopImages(String shopImages) {
