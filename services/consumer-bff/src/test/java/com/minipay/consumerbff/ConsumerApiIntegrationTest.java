@@ -5,7 +5,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.regex.Pattern;
+import okhttp3.mockwebserver.Dispatcher;
+import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.RecordedRequest;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ByteArrayResource;
@@ -229,6 +232,36 @@ class ConsumerApiIntegrationTest extends ConsumerBffIntegrationTest {
         RecordedRequest refresh = takeRequest(IDENTITY);
         assertThat(refresh.getPath()).isEqualTo("/oauth2/token");
         assertThat(form(refresh).path("grant_type").asText()).isEqualTo("refresh_token");
+        assertThat(form(refresh).path("refresh_token").asText()).isEqualTo("refresh-1");
+    }
+
+    @Test
+    void concurrentExpiredAccessTokenUsesOneRotatingRefreshToken() throws Exception {
+        login();
+
+        IDENTITY.enqueue(json(200, "{\"access_token\":\"access-2\","
+                + "\"token_type\":\"Bearer\",\"expires_in\":600,\"refresh_token\":\"refresh-2\"}")
+                .setBodyDelay(150, java.util.concurrent.TimeUnit.MILLISECONDS));
+        WALLET.setDispatcher(new Dispatcher() {
+            @Override
+            public MockResponse dispatch(RecordedRequest request) {
+                return "Bearer access-2".equals(request.getHeader("Authorization"))
+                        ? json(200, "{\"accountId\":\"account-1\",\"balanceCent\":12345}")
+                        : problem(401, "INVALID_ACCESS_TOKEN", null);
+            }
+        });
+
+        CompletableFuture<Void> wallet = CompletableFuture.runAsync(() ->
+                withCookies(client.get().uri("/api/v1/wallet"))
+                        .exchange().expectStatus().isOk());
+        CompletableFuture<Void> bills = CompletableFuture.runAsync(() ->
+                withCookies(client.get().uri("/api/v1/wallet/bills?limit=3"))
+                        .exchange().expectStatus().isOk());
+        CompletableFuture.allOf(wallet, bills).get(10, java.util.concurrent.TimeUnit.SECONDS);
+
+        assertThat(identityCalls()).isEqualTo(1);
+        assertThat(walletCalls()).isEqualTo(4);
+        RecordedRequest refresh = takeRequest(IDENTITY);
         assertThat(form(refresh).path("refresh_token").asText()).isEqualTo("refresh-1");
     }
 

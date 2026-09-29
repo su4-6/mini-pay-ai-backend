@@ -11,6 +11,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.http.HttpMethod;
@@ -34,6 +36,8 @@ import reactor.core.scheduler.Schedulers;
  * refresh is derived lazily with {@code switchIfEmpty} so a retry really performs a second refresh.
  */
 public class HttpConsumerApiGateway implements ConsumerApiGateway {
+
+    private static final ConcurrentMap<String, Mono<Void>> REFRESHES = new ConcurrentHashMap<>();
 
     private final WebClient identity;
     private final WebClient wallet;
@@ -82,7 +86,7 @@ public class HttpConsumerApiGateway implements ConsumerApiGateway {
                     if (!exchanged.unauthorized()) {
                         return Mono.just(toUpstreamResponse(exchanged));
                     }
-                    return refreshAccessToken(sessions, requestId)
+                    return refreshAccessToken(session, sessions, exchanged.accessTokenUsed(), requestId)
                             .then(exchangeWithToken(
                                     sessions, client, method, uri, body, idempotencyKey,
                                     requestId, false))
@@ -203,7 +207,7 @@ public class HttpConsumerApiGateway implements ConsumerApiGateway {
                         // 必须在 exchangeToMono 内部读完响应体：一旦把 ClientResponse 透出这个
                         // lambda，Netty 已经把缓冲区归还连接池，之后再 bodyToMono(String) 只会
                         // 得到空 body（实测 null），表现为"上游 200 但 BFF 转发出空 JSON 或 502"。
-                        .exchangeToMono(HttpConsumerApiGateway::readExchange));
+                        .exchangeToMono(response -> readExchange(response, current.accessToken())));
     }
 
     private Mono<UpstreamExchange> exchangeMultipartWithToken(
@@ -228,34 +232,48 @@ public class HttpConsumerApiGateway implements ConsumerApiGateway {
                     headers.setContentType(contentType);
                 })
                 .body(BodyInserters.fromDataBuffers(body))
-                .exchangeToMono(HttpConsumerApiGateway::readExchange));
+                .exchangeToMono(response -> readExchange(response, current.accessToken())));
     }
 
     /** Status, content type and body of one upstream exchange, captured while the body is readable. */
-    private record UpstreamExchange(int status, String contentType, String body) {
+    private record UpstreamExchange(int status, String contentType, String body, String accessTokenUsed) {
 
         boolean unauthorized() {
             return status == 401;
         }
     }
 
-    private static Mono<UpstreamExchange> readExchange(ClientResponse response) {
+    private static Mono<UpstreamExchange> readExchange(ClientResponse response, String accessTokenUsed) {
         String contentType = response.headers().contentType()
                 .map(MediaType::toString)
                 .orElse(MediaType.APPLICATION_JSON_VALUE);
         return response.bodyToMono(String.class)
                 .defaultIfEmpty("")
                 .map(body -> new UpstreamExchange(
-                        response.statusCode().value(), contentType, body));
+                        response.statusCode().value(), contentType, body, accessTokenUsed));
     }
 
-    private Mono<Void> refreshAccessToken(SessionTokenStore sessions, String requestId) {
-        return sessions.loadTokens()
-                .filter(ConsumerTokens::hasRefreshToken)
-                .switchIfEmpty(Mono.error(SessionRequiredException.expired()))
-                .flatMap(tokens -> identityGateway.refresh(tokens.refreshToken(), requestId))
-                .flatMap(refreshed -> sessions.storeTokens(new ConsumerTokens(
-                        refreshed.accessToken(), refreshed.refreshToken())));
+    private Mono<Void> refreshAccessToken(
+            WebSession webSession,
+            SessionTokenStore sessions,
+            String rejectedAccessToken,
+            String requestId) {
+        String key = webSession.getId();
+        Mono<Void> refresh = REFRESHES.computeIfAbsent(key, ignored -> Mono.defer(() ->
+                        sessions.loadTokens()
+                                .filter(ConsumerTokens::hasRefreshToken)
+                                .switchIfEmpty(Mono.error(SessionRequiredException.expired()))
+                                // Another request may already have rotated this session. If so, the
+                                // caller only needs to retry with the newly stored access token.
+                                .flatMap(tokens -> !tokens.accessToken().equals(rejectedAccessToken)
+                                        ? Mono.empty()
+                                        : identityGateway.refresh(tokens.refreshToken(), requestId)
+                                                .flatMap(refreshed -> sessions.storeTokens(
+                                                        new ConsumerTokens(
+                                                                refreshed.accessToken(),
+                                                                refreshed.refreshToken())))))
+                .cache());
+        return refresh.doFinally(ignored -> REFRESHES.remove(key, refresh));
     }
 
     private WebClient clientFor(String path) {
