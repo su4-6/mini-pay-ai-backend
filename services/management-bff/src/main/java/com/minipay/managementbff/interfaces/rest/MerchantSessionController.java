@@ -6,6 +6,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -36,6 +37,7 @@ public class MerchantSessionController {
     private final String clientId;
     private final String redirectUri;
 
+    @Autowired
     public MerchantSessionController(
             @Value("${minipay.identity-internal-url}") String identityUrl,
             @Value("${minipay.merchant-oauth-client-id}") String clientId,

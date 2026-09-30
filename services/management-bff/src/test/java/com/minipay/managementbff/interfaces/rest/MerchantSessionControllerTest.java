@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
+import org.springframework.core.env.MapPropertySource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -13,6 +15,20 @@ import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
 
 class MerchantSessionControllerTest {
+    @Test
+    void productionConstructorStartsInSpringContext() {
+        try (AnnotationConfigApplicationContext context = new AnnotationConfigApplicationContext()) {
+            context.getEnvironment().getPropertySources().addFirst(new MapPropertySource("test", java.util.Map.of(
+                    "minipay.identity-internal-url", "http://identity",
+                    "minipay.merchant-oauth-client-id", "merchant-web",
+                    "minipay.merchant-oauth-redirect-uri", "https://merchant/callback")));
+            context.register(MerchantSessionController.class);
+            context.refresh();
+
+            assertThat(context.getBean(MerchantSessionController.class)).isNotNull();
+        }
+    }
+
     @Test
     void sessionRefreshesPhoneFromIdentityInsteadOfKeepingLoginSnapshot() {
         AtomicReference<org.springframework.web.reactive.function.client.ClientRequest> request =
