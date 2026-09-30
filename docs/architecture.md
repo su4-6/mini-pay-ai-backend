@@ -150,6 +150,7 @@ bootstrap ──> all layers for wiring only
 - Access Token 为短时 RS256 JWT；每个资源服务校验 `iss`、`aud`、`exp`、`scope`。
 - Refresh Token 为轮换的不透明令牌，数据库只保存摘要，并检测复用。
 - Web 使用 Consumer/Management 两个 BFF 信任域；浏览器只持有 HttpOnly/Secure/SameSite Cookie。
+- Consumer H5 的经营地址逆地理解析由 Consumer BFF 使用服务端高德 Web 服务 Key 代理；浏览器只提交坐标并接收格式化地址，不持有服务端 Key。
 - Consumer H5 的 Access Token、Refresh Token、服务端设备标识及一次性支付授权令牌只保留在 Consumer BFF/Identity 信任边界内，不返回浏览器。资料、首次引导、实名、手机号、支付密码、银行卡及充值提现统一走同源 `/api/v1`。
 - Consumer BFF 对实名 JPEG（最大 1 MB）使用受限 multipart 流式转发，不落盘且不重放；资料、实名、手机号和支付密码变更成功后刷新服务端会话摘要。
 - 银行卡余额查询、充值和提现由 Consumer BFF 编排：先在 Payment 创建意图或订单，再把支付密码仅交给 Identity 换取绑定订单、金额、设备的单次授权，最后由 BFF 向 Payment 确认。浏览器和 Payment 均不接收支付密码。
