@@ -13,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -39,7 +40,11 @@ public class MerchantSessionController {
             @Value("${minipay.identity-internal-url}") String identityUrl,
             @Value("${minipay.merchant-oauth-client-id}") String clientId,
             @Value("${minipay.merchant-oauth-redirect-uri}") String redirectUri) {
-        this.identity = WebClient.builder().baseUrl(identityUrl).build();
+        this(WebClient.builder().baseUrl(identityUrl).build(), clientId, redirectUri);
+    }
+
+    MerchantSessionController(WebClient identity, String clientId, String redirectUri) {
+        this.identity = identity;
         this.clientId = clientId;
         this.redirectUri = redirectUri;
     }
@@ -105,18 +110,24 @@ public class MerchantSessionController {
                 .map(token -> store(session, token, request.mobile(), true));
     }
 
-    @RequestMapping("/merchant-session")
-    public MerchantSessionResponse session(WebSession session) {
+    @GetMapping("/merchant-session")
+    public Mono<MerchantSessionResponse> session(WebSession session) {
         String token = session.getAttribute(ACCESS_TOKEN);
         Instant expiresAt = session.getAttribute(ACCESS_TOKEN_EXPIRES_AT);
         if (token == null || expiresAt == null || !expiresAt.isAfter(Instant.now())) {
             session.getAttributes().remove(ACCESS_TOKEN);
             session.getAttributes().remove(ACCESS_TOKEN_EXPIRES_AT);
             session.getAttributes().remove(PASSWORD_CONFIGURED);
-            return new MerchantSessionResponse(false, null, null, false);
+            return Mono.just(new MerchantSessionResponse(false, null, null, false));
         }
-        return new MerchantSessionResponse(true, expiresAt, session.getAttribute(LOGIN_PHONE),
-                Boolean.TRUE.equals(session.getAttribute(PASSWORD_CONFIGURED)));
+        return identity.get().uri("/api/v1/auth/merchant/account")
+                .headers(headers -> headers.setBearerAuth(token))
+                .retrieve().bodyToMono(MerchantAccountResponse.class)
+                .map(account -> {
+                    session.getAttributes().put(LOGIN_PHONE, account.phone());
+                    return new MerchantSessionResponse(true, expiresAt, account.phone(),
+                            Boolean.TRUE.equals(session.getAttribute(PASSWORD_CONFIGURED)));
+                });
     }
 
     /** Removes the merchant-only server session; it never affects the operations portal session. */
@@ -187,6 +198,7 @@ public class MerchantSessionController {
             boolean authenticated, Instant expiresAt, String phone, boolean passwordConfigured) { }
     private record IdentityChallenge(String challengeId, Instant expiresAt, Instant resendAt) { }
     private record IdentityCaptcha(String captchaId, String imageUrl, Instant expiresAt) { }
+    private record MerchantAccountResponse(String phone) { }
     public record CaptchaResponse(String captchaId, String imageUrl, Instant expiresAt) { }
     private record AuthorizationCodeResponse(
             String authorizationCode, String phone, boolean merchantPasswordConfigured) { }

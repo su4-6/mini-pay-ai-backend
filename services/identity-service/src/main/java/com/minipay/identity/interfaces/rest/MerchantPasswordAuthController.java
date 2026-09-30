@@ -19,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -87,6 +88,11 @@ public class MerchantPasswordAuthController {
         return credentials.resetAfterSms(subject(jwt), request.newPassword());
     }
 
+    @GetMapping("/account")
+    public MerchantAccountResponse account(@AuthenticationPrincipal Jwt jwt) {
+        return new MerchantAccountResponse(accounts.requireVerifiedMobile(subject(jwt)));
+    }
+
     private static java.util.UUID subject(Jwt jwt) {
         if (jwt == null) {
             throw new LoginRejectedException("MERCHANT_REAUTHENTICATION_REQUIRED");
@@ -116,4 +122,5 @@ public class MerchantPasswordAuthController {
     public record ResetPasswordRequest(
             @NotBlank @Size(min = 12, max = 20) String newPassword) { }
     public record AuthorizationCodeResponse(String authorizationCode, Instant expiresAt) { }
+    public record MerchantAccountResponse(String phone) { }
 }

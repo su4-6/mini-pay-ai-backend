@@ -175,6 +175,9 @@ public class SecurityConfiguration {
                                 "/api/v1/auth/merchant/password",
                                 "/api/v1/auth/merchant/password/reset")
                         .access(audienceAndScope("merchant-api", "merchant.portal.write"))
+                        .requestMatchers(org.springframework.http.HttpMethod.GET,
+                                "/api/v1/auth/merchant/account")
+                        .access(audienceAndScope("merchant-api", "merchant.portal.read"))
                         .requestMatchers(
                                  "/login", "/login/**",
                                  "/session/logout", "/error",
